@@ -1,47 +1,104 @@
-# pro-asixc1C-g1
-Grup format per Laia Coca, Emilia Tikohonova, Brenda Castro i Mario Cabeza.
+<div align="center">
+  <h1>📊 Projecte SGBD: Plataforma Avançada InnovateTech</h1>
+  <p><i>Infraestructura, bases de dades i automatització per a serveis de comunicació i streaming.</i></p>
 
-# 📊 Proyecto SGBD: Plataforma Avanzada InnovateTech
-
-Este repositorio contiene la infraestructura física, scripts de automatización, triggers de seguridad y políticas de hardening del sistema operativo para la plataforma de comunicación, soporte y streaming de **InnovateTech**.
+  ![MariaDB](https://img.shields.io/badge/MariaDB-003545?style=for-the-badge&logo=mariadb&logoColor=white)
+  ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+  ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white)
+</div>
 
 ---
 
-## 🗺️ Apartado 1: Diseño del Modelo Relacional (16 Tablas)
+## 👥 Equip de Desenvolupament (pro-asixc1C-g1)
+Aquest projecte ha estat desenvolupat i mantingut per:
+* **Laia Coca**
+* **Emilia Tikohonova**
+* **Brenda Castro**
+* **Mario Cabeza**
 
-El esquema de la base de datos se estructura de forma homogénea en catalán, consolidando un total de **16 tablas** operativas divididas en módulos funcionales.
+---
 
-### 👥 1.1. Gestió de Personal i Recursos Humans
-* **departaments:** `codi_dept` (PK), `nom_compleat`, `telefon`.
-* **grups_nivells:** `id_grup_nivell` (PK), `nom_grup`, `descripcio`.
-* **empleats:** `dni` (PK), `nom`, `cognoms`, `adreca`, `telefon`, `codi_dept` (FK), `id_grup_nivell` (FK).
-* **nomines:** `id_nomina` (PK), `dni_empleat` (FK), `mes`, `any`, `salari_base`, `deduccions`, `total_net`.
+## 📖 Descripció del Projecte
+
+Aquest repositori conté tota la infraestructura física, els scripts d'automatització, els *triggers* de seguretat i les polítiques de *hardening* del sistema operatiu dissenyats específicament per a la plataforma de comunicació, suport i streaming de **InnovateTech**.
+
+L'objectiu principal és garantir una gestió de dades eficient, segura i altament disponible, cobrint des de la gestió de personal fins a la monitorització de qualitat de xarxa (QoS).
+
+---
+
+## 🗺️ Apartat 1: Disseny del Model Relacional (16 Taules)
+
+L'esquema de la base de dades s'estructura de forma homogènia en **català**, consolidant un total de **16 taules** operatives. Aquestes taules estan dividides lògicament en diversos mòduls funcionals per facilitar-ne el manteniment i l'escalabilitat.
+
+### 🏢 1.1. Gestió de Personal i Recursos Humans
+Aquest mòdul centralitza l'estructura organitzativa de l'empresa, les dades dels treballadors i la gestió financera de les nòmines.
+
+| Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
+| :--- | :--- | :--- | :--- |
+| **`departaments`** | `codi_dept` | - | `nom_compleat`, `telefon` |
+| **`grups_nivells`** | `id_grup_nivell` | - | `nom_grup`, `descripcio` |
+| **`empleats`** | `dni` | `codi_dept`, `id_grup_nivell` | `nom`, `cognoms`, `adreca`, `telefon` |
+| **`nomines`** | `id_nomina` | `dni_empleat` | `mes`, `any`, `salari_base`, `deduccions`, `total_net` |
 
 ### 💬 1.2. Sistema de Comunicació, Usuaris i QoS
-* **usuaris_sistema:** `id_usuari` (PK), `dni_empleat` (FK, vació para clientes externos), `nom_complet`, `email` (UNIQUE), `extensio_trucades` (UNIQUE), `rol` (ENUM: 'client', 'treballador'), `estat` (ENUM: 'actiu', 'bloquejat'), `enllaç_videotrucada`.
-* **qualitats:** `id_calitat` (PK), `nom_perfil` (ENUM: 'alta', 'mitja', 'baixa'), `max_amplada_banda`, `ports_protocols`.
-* **registre_trucades:** `id_trucada` (PK), `usuari_origen` (FK), `usuari_desti` (FK), `data_hora_inici`, `data_hora_fi`, `durada_segons`, `id_calitat_usada` (FK), `puntuacio_valoracio` (CHECK), `comentari_valoracio`.
+Gestió dels usuaris de la plataforma (tant interns com externs) i registre de la qualitat de les trucades.
+
+| Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
+| :--- | :--- | :--- | :--- |
+| **`usuaris_sistema`** | `id_usuari` | `dni_empleat` *(Buit per a clients)* | `nom_complet`, `email` (UNIQUE), `extensio_trucades` (UNIQUE), `rol` (ENUM: 'client', 'treballador'), `estat` (ENUM: 'actiu', 'bloquejat'), `enllaç_videotrucada` |
+| **`qualitats`** | `id_calitat` | - | `nom_perfil` (ENUM: 'alta', 'mitja', 'baixa'), `max_amplada_banda`, `ports_protocols` |
+| **`registre_trucades`**| `id_trucada` | `usuari_origen`, `usuari_desti`, `id_calitat_usada` | `data_hora_inici`, `data_hora_fi`, `durada_segons`, `puntuacio_valoracio` (CHECK), `comentari_valoracio` |
 
 ### 🎬 1.3. Streaming i Catàleg de Continguts
-* **cataleg_videos:** `id_video` (PK), `titol`, `descripcio`, `categoria`, `durada`, `data_publicacio`, `url_streaming`.
+Administració del repositori de vídeos i recursos multimèdia de la plataforma.
 
-### 📡 1.4. Operacions, Red i Amplada de Banda
-* **mesures_ampla_banda:** `id_mesura` (PK), `data_hora`, `equip_mesurat`, `velocitat_baixada` (DECIMAL), `velocitat_pujada` (DECIMAL), `latencia` (DECIMAL), `resultat` (ENUM: 'acceptable', 'no acceptable'), `dni_operari` (FK a empleats), `observacions`.
+| Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
+| :--- | :--- | :--- | :--- |
+| **`cataleg_videos`** | `id_video` | - | `titol`, `descripcio`, `categoria`, `durada`, `data_publicacio`, `url_streaming` |
 
-### 🛒 1.5. Operacions Comercials y Vendes
-* **clients:** `id_client` (PK), `nom_empresa`, `cif`, `telefon_contacte`.
-* **productes:** `id_producte` (PK), `nom_producte`, `preu` (DECIMAL), `estoc`.
-* **comandes:** `id_comanda` (PK), `id_client` (FK), `data_comanda`, `estat_pagament`.
-* **cistell:** `id_cistell` (PK), `id_client` (FK), `id_producte` (FK), `quantitat`.
+### 📡 1.4. Operacions, Xarxa i Amplada de Banda
+Monitoratge tècnic del rendiment de la infraestructura per assegurar l'estabilitat del streaming.
 
-### 🛡️ 1.6. Seguretat, Auditories i Respaldo (Mòdul 0377)
-* **taula_avisos:** `id_avis` (PK), `usuari_base_dades`, `taula_afectada`, `operacio_intentada`, `data_hora`.
-* **registre_backups:** `id_backup` (PK), `data_hora`, `taules_incloses`, `resultat`.
-* **logs_auditorias:** `id_log` (PK), `usuari_sistema`, `accio_realitzada`, `detalls`, `data_hora`.
+| Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
+| :--- | :--- | :--- | :--- |
+| **`mesures_ampla_banda`**| `id_mesura` | `dni_operari` | `data_hora`, `equip_mesurat`, `velocitat_baixada` (DEC), `velocitat_pujada` (DEC), `latencia` (DEC), `resultat` (ENUM: 'acceptable', 'no acceptable'), `observacions` |
+
+### 🛒 1.5. Operacions Comercials i Vendes
+Mòdul encarregat de la gestió de clients empresarials, estoc de productes i facturació.
+
+| Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
+| :--- | :--- | :--- | :--- |
+| **`clients`** | `id_client` | - | `nom_empresa`, `cif`, `telefon_contacte` |
+| **`productes`** | `id_producte` | - | `nom_producte`, `preu` (DECIMAL), `estoc` |
+| **`comandes`** | `id_comanda` | `id_client` | `data_comanda`, `estat_pagament` |
+| **`cistell`** | `id_cistell` | `id_client`, `id_producte`| `quantitat` |
+
+### 🛡️ 1.6. Seguretat, Auditories i Respatller (Mòdul 0377)
+Garanteix la traçabilitat de les operacions i l'estat de les còpies de seguretat del SGBD.
+
+| Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
+| :--- | :--- | :--- | :--- |
+| **`taula_avisos`** | `id_avis` | - | `usuari_base_dades`, `taula_afectada`, `operacio_intentada`, `data_hora` |
+| **`registre_backups`** | `id_backup` | - | `data_hora`, `taules_incloses`, `resultat` |
+| **`logs_auditorias`** | `id_log` | - | `usuari_sistema`, `accio_realitzada`, `detalls`, `data_hora` |
+
+---
 
 > [!TIP]
-> **Actualización del Diagrama (Draw.io):** Se han eliminado las tablas obsoletas del borrador inicial, garantizando que el diseño gráfico de tablas y relaciones se corresponda estrictamente con este esquema físico de 16 entidades.
+> **Actualització del Diagrama (Draw.io):** S'han eliminat les taules obsoletes de l'esborrany inicial, garantint que el disseny gràfic de relacions es correspongui de manera estricta i fidel amb aquest esquema físic definitiu de 16 entitats.
+
+---
+
+## ⚙️ Desplegament i Preparació de l'Entorn
+
+Per posar en marxa l'entorn de la base de dades, cal preparar el servidor instal·lant el sistema gestor. Executa el següent bloc de comandes en un entorn basat en Debian/Ubuntu:
+
 ```bash
+# 1. Actualitzar els repositoris i paquets del sistema
 sudo apt update && sudo apt upgrade -y
+
+# 2. Instal·lar el servidor MariaDB
 sudo apt install mariadb-server -y
+
+# 3. Comprovar l'estat del servei per verificar la correcta instal·lació
 sudo systemctl status mariadb
