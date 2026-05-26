@@ -89,6 +89,18 @@ Garanteix la traçabilitat de les operacions i l'estat de les còpies de seguret
 
 ---
 
+### 🔄 Actualització del Diagrama (Draw.io / Lucidchart)
+Per garantir la correspondència exacta amb el model físic final de 16 entitats, s'han dut a terme les següents accions:
+* Eliminació exhaustiva de taules obsoletes de l'esborrany inicial.
+* Canvi complet de noms de l'esquema a l'idioma **català**.
+* Creació de les taules estructurals: `grups_nivells`, `qualitats` i `registre_trucades`.
+* Disseny i enllaç de claus estrangeres (FK) crítiques (com la columna `grup_nivell`).
+
+**Diagrama Entitat-Relació (Model Físic):**
+<div align="center">
+  <img src="URL_DE_TU_IMAGEN_AQUI" alt="Diagrama ER InnovateTech" width="800"/>
+</div>
+
 ## ⚙️ Desplegament i Preparació de l'Entorn
 
 Per posar en marxa l'entorn de la base de dades, cal preparar el servidor instal·lant el sistema gestor. Executa el següent bloc de comandes en un entorn basat en Debian/Ubuntu:
