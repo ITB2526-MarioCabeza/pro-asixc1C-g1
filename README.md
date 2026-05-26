@@ -66,6 +66,106 @@ Durante la definición del DDL en el SGBD se han tomado decisiones arquitectóni
 ### 3.1. Actualización e Instalación en AWS EC2
 Para preparar el entorno de producción y verificar el correcto levantamiento del demonio del SGBD, se ejecutan los siguientes comandos en la terminal de Linux:
 
+-- Primer paso: Creación e ingreso al esquema principal
+CREATE DATABASE innovatetech_db;
+USE innovatetech_db;
+3.3. Inserción de Datos de Prueba
+Se ha poblado el SGBD de manera controlada para dar cumplimiento a los requisitos funcionales:
+
+Alta de Departamentos (Requisito 3.1) e inserción de trabajadores en la tabla Empleados.
+
+Definición de perfiles de Calidad de Servicio (QoS) en la tabla qualitats.
+
+Inserción de Usuarios de Sistema vinculando tanto DNI de personal interno como accesos de clientes externos.
+
+Carga del catálogo de contenidos en la tabla cataleg_videos.
+
+Datos operacionales cruzados: asignación de nóminas, generación de productos, apertura de cestas de compra e historial base en registre_trucades.
+
+🔐 Apartado 4: Control de Accesos, Roles y Matriz de Permisos
+El control de accesos se rige bajo la premisa de la restricción implícita: todo lo que no está explícitamente concedido por un administrador está prohibido por defecto por el motor MariaDB.
+
+SQL
+-- Declaración de los roles exigidos en el apartado 3.3.1
+CREATE ROLE 'admin_rol', 'vendes_rol', 'administracio_rol', 'treballador_rol';
+4.1. Matriz de Privilegios del Sistema
+Admin (admin_rol): Ostenta el control absoluto de la base de datos (ALL PRIVILEGES). Cuenta en exclusiva con la asignación del privilegio global FILE. Este permiso crítico del sistema operativo faculta a MariaDB para realizar operaciones de lectura y escritura directa sobre el sistema de almacenamiento local de la instancia EC2, acción necesaria para la ejecución automatizada de las copias de seguridad.
+
+Vendes (vendes_rol): Privilegios de escritura y lectura (SELECT, INSERT, UPDATE) restringidos exclusivamente al flujo de negocio: tablas clients, comandes, productes, cistell y acceso consultivo a llamadas.
+
+Administració (administracio_rol): Permisos de gestión completa sobre el área de recursos humanos (empleats, nomines, departaments, grups_nivells). Por defecto, MariaDB les deniega el acceso a la tabla registre_trucades al no existir una concesión explícita.
+
+Treballador (treballador_rol): Aplicación estricta del Principio de Mínimo Privilegio. El operario tiene permisos de lectura sobre el catálogo de vídeos y productos, y facultades de INSERT en registre_trucades para dejar constancia de su actividad. No dispone de privilegios de UPDATE ni DELETE sobre las llamadas, evitando que un empleado altere de manera fraudulenta las duraciones o métricas de soporte.
+
+🛡️ Apartado 5: Triggers de Seguridad y Reglas de Negocio
+Para asegurar que la lógica de negocio y las políticas de la empresa se cumplan de manera automatizada en la capa de datos, se han implementado los siguientes Triggers (Disparadores) activos:
+
+Filtro de Duplicados en Alta: Detiene la ejecución lanzando un error controlado mediante SIGNAL SQLSTATE si la capa de aplicación intenta duplicar identificadores o usuarios existentes.
+
+Control de Usuarios Bloqueados: Un disparador de tipo BEFORE INSERT en registre_trucades analiza el estado del emisor en usuaris_sistema. Si el flag está marcado como 'bloquejat', la inserción de la llamada es abortada de forma nativa.
+
+Cortafuegos Antiactividad Diaria (DoS): Trigger que computa el número de llamadas realizadas por un usuario específico en el día actual. Al alcanzar el límite estricto de 50 llamadas, el disparador modifica automáticamente el estado de ese usuario a 'bloquejat' en la tabla correspondiente para mitigar usos indebidos de la red VoIP.
+
+Umbral de Consumo Mensual: Restringe el inicio de nuevas videollamadas si el sumatorio de minutos acumulados por el identificador del usuario supera los 1000 minutos mensuales.
+
+Vigilancia de Estructuras Financieras: Trigger centrado en la tabla nomines que detecta el usuario del sistema operativo que intenta hacer modificaciones. Bloquea de inmediato cualquier operación de UPDATE o DELETE sobre salarios si proviene de los roles de treballador o vendes.
+
+Aislamiento Organizacional de Comunicaciones: Disparador que deniega e interrumpe cualquier interacción de inserción o alteración sobre el sistema de registros de llamadas si el operador está asignado al rol de administracio.
+
+🤖 Apartado 6: Scripting de Backup y Automatización (Bash/Cron)
+Para el resguardo diario de la información corporativa, se ha programado un script en Bash que realiza un volcado lógico de la base de datos (mysqldump), registrando el resultado de la operación en la tabla registre_backups y enviando alertas en caso de fallo a la entidad taula_avisos (Log de auditoría exigido en el apartado 3.3.3 del módulo 0377).
+
+6.1. Automatización con Crontab
+Para evitar la degradación del rendimiento de la red corporativa durante las horas de producción, el script se ha automatizado mediante el demonio cron del sistema operativo para ejecutarse de manera persistente a las 23:00h:
+
+Bash
+# Permisos de ejecución aplicados al script
+chmod +x /home/mario.cabeza.7e9/scripts/backup.sh
+
+# Entrada programada en el crontab del usuario del sistema
+0 23 * * * /home/mario.cabeza.7e9/scripts/backup.sh
+🖥️ Apartado 7: Hardening, Gestión de Usuarios y Admin de Linux (AWS EC2)
+Se han implementado políticas de robustecimiento e infraestructura a nivel del sistema operativo Linux para securizar el nodo de AWS:
+
+Creación de Operador Alternativo: Se ha dado de alta al usuario del sistema mario.cabeza.7e9, otorgándole privilegios administrativos elevados mediante su inclusión controlada en el archivo de configuración /etc/sudoers.
+
+Migración de Entorno y Persistencia: Para consolidar el entorno de trabajo bajo el nuevo operador, se han transferido los scripts y ficheros generados originalmente en el terminal por el usuario por defecto (ubuntu), aplicando comandos chown y chmod para otorgar la propiedad absoluta al nuevo usuario de manera persistente.
+
+Hardening SSH (Autenticación por Contraseña Forzada): Se modificaron las directivas del archivo /etc/ssh/sshd_config, forzando al demonio SSH a exigir obligatoriamente una contraseña robusta para el usuario alternativo, anulando accesos directos sin validación de credenciales como contramedida de seguridad.
+
+Persistencia de Identidad de Red (Hostname): Se configuró permanentemente el nombre de red de la máquina. La persistencia del cambio se ha validado de manera exitosa tras un ciclo completo de reinicio de la instancia (sudo reboot).
+
+🔍 Apartado 8: Validaciones Finales y Comprobación del SGBD
+Para constatar que el estado final de la base de datos es óptimo y se corresponde con la reestructuración física de las 16 tablas, se realizaron consultas de auditoría desde el entorno del operador mario.cabeza.7e9:
+
+8.1. Verificación del Catálogo de Tablas
+SQL
+-- Comprobación del número total de entidades creadas
+SHOW TABLES;
+
+-- Validación de la estructura de campos en tablas core
+DESCRIBE departaments;
+DESCRIBE grups_nivells;
+DESCRIBE empleats;
+DESCRIBE nomines;
+DESCRIBE usuaris_sistema;
+DESCRIBE qualitats;
+DESCRIBE registre_trucades;
+8.2. Inspección DDL y Reglas de Integridad
+SQL
+-- Extracción y auditoría de restricciones físicas nativas
+SHOW CREATE TABLE empleats;        -- Verifica relaciones FK y reglas RESTRICT
+SHOW CREATE TABLE registre_trucades; -- Verifica restricciones CONSTRAINT CHECK (1-5)
+SHOW CREATE TABLE cistell;         -- Verifica la cascada activa (ON DELETE CASCADE)
+8.3. Auditoría de Seguridad de Usuarios y Disparadores
+SQL
+-- Consulta de mapeo de usuarios del motor y privilegios asignados
+SELECT User, Host FROM mysql.user;
+SHOW GRANTS FOR 'mario.cabeza.7e9'@'localhost';
+
+-- Verificación de la presencia de los Triggers de control perimetral
+SHOW TRIGGERS;
+
 ```bash
 sudo apt update && sudo apt upgrade -y
 sudo apt install mariadb-server -y
