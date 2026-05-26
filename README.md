@@ -101,6 +101,8 @@ Per garantir la correspondència exacta amb el model físic final de 16 entitats
   <img src="PROYECTO_TRANSVERSAL.png" alt="Diagrama ER InnovateTech" width="1000"/>
 </div>
 
+---
+
 ### ☁️ Justificació de la Infraestructura (EC2 vs RDS)
 S'ha optat per desplegar el SGBD MariaDB directament sobre una instància **Amazon EC2** en comptes d'utilitzar Amazon RDS pels següents motius:
 1. **Control Absolut del Sistema:** L'ús d'una instància EC2 ens permet gestionar directament el sistema operatiu (Ubuntu), gestionar de forma nativa fitxers de configuració del motor i utilitzar eines de tasques programades del sistema com `cron`.
