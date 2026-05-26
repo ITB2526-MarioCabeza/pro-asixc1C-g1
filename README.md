@@ -98,7 +98,7 @@ Per garantir la correspondència exacta amb el model físic final de 16 entitats
 
 **Diagrama Entitat-Relació (Model Físic):**
 <div align="center">
-  <img src="URL_DE_TU_IMAGEN_AQUI" alt="Diagrama ER InnovateTech" width="800"/>
+  <img src="PROYECTO_TRANSVERSAL.png" alt="Diagrama ER InnovateTech" width="1000"/>
 </div>
 
 ## ⚙️ Desplegament i Preparació de l'Entorn
