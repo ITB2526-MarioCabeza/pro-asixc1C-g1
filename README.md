@@ -5,7 +5,7 @@
 **Curs:** 2025/2026 · **Grup:** ASIXc1C · **Equip:** pro-asixc1C-g1
  
 ---
- 
+ saffdasdf
 ## Equip de Desenvolupament
  
 | Membre | Rol principal |
