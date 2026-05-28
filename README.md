@@ -15,19 +15,6 @@ L'objectiu principal és garantir una gestió de dades eficient, segura i altame
 
 ---
 
-<div align="center">
-  <h1>📋 Servidor LOGS: Rsyslog + ELK Stack</h1>
-  <p><i>Configuració centralitzada de logs amb Ansible, Rsyslog, Elasticsearch, Kibana i Filebeat per a InnovateTech.</i></p>
-
-  ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=for-the-badge&logo=ansible&logoColor=white)
-  ![Elastic](https://img.shields.io/badge/Elastic-005571?style=for-the-badge&logo=elastic&logoColor=white)
-  ![Kibana](https://img.shields.io/badge/Kibana-005571?style=for-the-badge&logo=kibana&logoColor=white)
-  ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
-  ![AWS EC2](https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)
-</div>
-
----
-
 ## 📖 Descripció de l'Apartat
 
 Aquest document descriu la configuració completa del servidor de **logs centralitzat** d'InnovateTech (`srv-logs`), desplegat sobre una instància **Amazon EC2** amb Ubuntu. Inclou la creació de l'usuari i accés per clau pública, la instal·lació i automatització amb **Ansible**, la configuració de **Rsyslog** per recollir logs de totes les màquines via UDP/TCP al port 514, i el desplegament de l'**ELK Stack** (Elasticsearch + Kibana + Filebeat) per a la visualització centralitzada dels logs.
