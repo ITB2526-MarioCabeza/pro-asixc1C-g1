@@ -937,8 +937,6 @@ sudo systemctl status mariadb
 
 chmod 600 ~/.ssh/authorized_keys
 
-# A partir d'aquest moment, s'afegeix la clau pública a l'arxiu authorized_keys
-
 ---
 
 <div align="center">
