@@ -131,3 +131,47 @@ sudo apt install mariadb-server -y
 
 # 3. Comprovar l'estat del servei per verificar la correcta instal·lació
 sudo systemctl status mariadb
+
+# SERVEI WEB
+
+## 📖 Especificacions i Configuració del Servidor
+
+A continuació es detallen les especificacions tècniques i els paràmetres de xarxa assignats a la instància que allotja els serveis web d'**InnovateTech**.
+
+| Paràmetre | Valor / Configuració |
+| :--- | :--- |
+| **Sistema Operatiu** | `Ubuntu Server 24.04 LTS` |
+| **Proveïdor Cloud** | `Amazon Web Services (AWS EC2)` |
+| **Adreça IP Pública** | `XX.XX.XX.XX` *(Remplaçar amb la vostra IP)* |
+| **Hostname de la Màquina** | `HA207-24-WLD-007` |
+| **Usuari de Treball** | `mario.cabeza.7e9` |
+
+Per tal d'identificar de forma unívoca la màquina dins de la infraestructura de xarxa del projecte transversal, s'ha assignat el format de nom estandarditzat i s'han creat els usuaris operatius del grup de treball amb permisos d'administració (`sudo`).
+
+Per poder accedir a la màquina de manera completament segura en comptes de fer-ho mitjançant contrasenya tradicional (la qual és vulnerable a atacs de força bruta), s'ha implementat un accés basat exclusivament en **claus públiques/privades**. D'aquesta manera es bloqueja qualsevol intent d'intrusió extern. 
+
+Fins ara, l'accés a l'instància d'AWS s'havia de fer obligatòriament amb la clau original `.pem` del laboratori, però aquest mètode no permetia entrar directament autenticat amb el nou usuari nominal creat. Per canviar i personalitzar la manera d'accés, es genera una nova parella de claus criptogràfiques a la màquina client i es copia la clau pública generada (arxiu `.pub`). A la instància d'AWS, dins de l'espai central del nostre usuari, creem el directori ocult de configuració i l'arxiu per desar la clau pública copiada anteriorment:
+
+```bash
+# Crear el directori de configuració SSH amb els permisos correctes
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+
+# Crear l'arxiu on s'ha d'enganxar la clau pública del client
+touch ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+# A partir d'aquest moment, s'afegeix la clau pública a l'arxiu authorized_keys
+
+# 1. Actualitzar l'índex de paquets del sistema operatiu
+sudo apt update && sudo apt upgrade -y
+
+# 2. Instal·lar el servidor web i dependències necessàries
+sudo apt install apache2 -y
+
+# 3. Habilitar el servei per a que s'iniciï automàticament amb el sistema
+sudo systemctl enable apache2
+sudo systemctl start apache2
+
+# 4. Comprovar el correcte funcionament del daemon
+sudo systemctl status apache2
