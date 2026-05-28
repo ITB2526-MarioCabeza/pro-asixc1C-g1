@@ -132,6 +132,10 @@ sudo apt install mariadb-server -y
 # 3. Comprovar l'estat del servei per verificar la correcta instal·lació
 sudo systemctl status mariadb
 
+<br><br>
+
+---
+
 <div align="center">
   <h1>🌐 Servidor Web: Plataforma Avançada InnovateTech</h1>
   <p><i>Infraestructura, desplegament i polítiques de seguretat SSH per al servidor web de l'empresa.</i></p>
@@ -140,6 +144,15 @@ sudo systemctl status mariadb
   ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
   ![SSH](https://img.shields.io/badge/SSH-000000?style=for-the-badge&logo=openssh&logoColor=white)
 </div>
+
+---
+
+## 👥 Equip de Desenvolupament (pro-asixc1C-g1)
+Aquest mòdul ha estat configurat i documentat de forma conjunta per:
+* **Laia Coca**
+* **Emilia Tikohonova**
+* **Brenda Castro**
+* **Mario Cabeza**
 
 ---
 
@@ -155,9 +168,9 @@ A continuació es detallen les especificacions tècniques i els paràmetres de x
 | **Hostname de la Màquina** | `HA207-24-WLD-007` |
 | **Usuari de Treball** | `mario.cabeza.7e9` |
 
-Per tal d'identificar de forma unívoca la màquina dins de la infraestructura de xarxa del projecte transversal, s'ha assignat el format de nom estandarditzat i s'han creat els usuaris operatius del grup de treball amb permisos d'administració (`sudo`).
+Per tal d'identificar de forma unívoca la màquina dins de la infrastructure de xarxa del projecte transversal, s'ha assignat el format de nom estandarditzat i s'han creat els usuaris operatius del grup de treball amb permisos d'administració (`sudo`).
 
-Per poder accedir a la màquina de manera completament segura en comptes de fer-ho mitjançant contrasenya tradicional (la qual és vulnerable a atacs de força bruta), s'ha implementat un accés basat exclusivament en **claus públiques/privades**. D'aquesta manera es bloqueja qualsevol intent d'intrusió extern.
+Per poder accedir a la màquina de manera completament segura en comptes de fer-ho mitjançant contrasenya tradicional (la qual és vulnerable a atacs de força bruta), s'ha implementat un accés basat exclusivament en **claus públiques/privades**. D'aquesta manera es bloqueja qualezvol intent d'intrusió extern.
 
 Fins ara, l'accés a l'instància d'AWS s'havia de fer obligatòriament amb la clau original `.pem` del laboratori, però aquest mètode no permetia entrar directament autenticat amb el nou usuari nominal creat. Per canviar i personalitzar la manera d'accés, es genera una nova parella de claus criptogràfiques a la màquina client i es copia la clau pública generada (arxiu `.pub`). A la instància d'AWS, dins de l'espai central del nostre usuari, creem el directori ocult de configuració i l'arxiu per desar la clau pública copiada anteriorment:
 
