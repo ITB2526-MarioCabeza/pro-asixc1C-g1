@@ -38,15 +38,6 @@ L'objectiu principal és garantir una gestió de dades eficient, segura i altame
 
 ---
 
-## 👥 Equip de Desenvolupament (pro-asixc1C-g1)
-Aquest projecte ha estat desenvolupat i mantingut per:
-* **Laia Coca**
-* **Emilia Tikohonova**
-* **Brenda Castro**
-* **Mario Cabeza**
-
----
-
 ## 📖 Descripció de l'Apartat
 
 Aquest document descriu la configuració del servei **SFTP** sobre la màquina web d'InnovateTech, incloent la integració amb el servidor **LDAP** mitjançant **SSSD** per a l'autenticació centralitzada d'usuaris, la configuració del `sshd_config` per restringir l'accés SFTP i la creació i verificació dels directoris personals dels membres de l'equip.
