@@ -485,369 +485,6 @@ sftp brenda@localhost
 # sftp> ls
 # files
 ```
- 
----
- 
-## 5. Servidor de Logs: Rsyslog + ELK Stack
- 
-![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=for-the-badge&logo=ansible&logoColor=white)
-![Elastic](https://img.shields.io/badge/Elastic-005571?style=for-the-badge&logo=elastic&logoColor=white)
-![Kibana](https://img.shields.io/badge/Kibana-005571?style=for-the-badge&logo=kibana&logoColor=white)
-![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
-![AWS EC2](https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)
- 
-El servidor `srv-logs` centralitza els logs de tota la infraestructura mitjançant Rsyslog (recepció) i l'ELK Stack (indexació i visualització). Tota la configuració s'automatitza amb **Ansible**.
- 
-> La creació de l'usuari d'administració i la configuració d'accés per clau pública d'aquesta màquina es descriu a la [secció §2.1](#21-prerequisit-global-accés-i-administració-de-màquines), que és comuna a totes les instàncies.
- 
-### Paràmetres del servidor
- 
-| Paràmetre | Valor |
-| :--- | :--- |
-| **Hostname** | `srv-logs` |
-| **Usuari d'administració** | `emilia` |
-| **IP privada** | `10.0.6.239` |
-| **IP pública** | `52.4.133.45` |
-| **Port Rsyslog** | `514` (UDP + TCP) |
-| **Port Kibana** | `5601` |
-| **Port Elasticsearch** | `9200` |
-| **Versió Ansible** | `2.20.1` |
- 
----
- 
-### 5.1. Instal·lació i Estructura d'Ansible
- 
-```bash
-sudo apt update && sudo apt install ansible -y
-ansible --version
-# ansible [core 2.20.1]
- 
-# Crear l'estructura de treball
-mkdir ~/ansible && cd ~/ansible
-```
- 
-Contingut de `inventory.ini`:
- 
-```ini
-[logs]
-localhost ansible_connection=local
-```
- 
-> Ansible s'administra a si mateix: el servidor de logs és alhora el controlador Ansible i el node gestionat.
- 
----
- 
-### 5.2. Playbook Rsyslog: Recepció Centralitzada de Logs
- 
-El playbook `rsyslog.yml` configura Rsyslog per acceptar logs de totes les màquines de la xarxa via UDP i TCP al port 514.
- 
-```yaml
----
-- hosts: logs
-  become: yes
- 
-  tasks:
-    - name: Instal·lar rsyslog
-      apt:
-        name: rsyslog
-        state: present
-        update_cache: yes
- 
-    - name: Habilitar recepció UDP
-      lineinfile:
-        path: /etc/rsyslog.conf
-        regexp: '^#module\(load="imudp"\)'
-        line: 'module(load="imudp")'
- 
-    - name: Obrir port UDP 514
-      lineinfile:
-        path: /etc/rsyslog.conf
-        regexp: '^#input\(type="imudp" port="514"\)'
-        line: 'input(type="imudp" port="514")'
- 
-    - name: Habilitar recepció TCP
-      lineinfile:
-        path: /etc/rsyslog.conf
-        regexp: '^#module\(load="imtcp"\)'
-        line: 'module(load="imtcp")'
- 
-    - name: Obrir port TCP 514
-      lineinfile:
-        path: /etc/rsyslog.conf
-        regexp: '^#input\(type="imtcp" port="514"\)'
-        line: 'input(type="imtcp" port="514")'
-      notify: Reiniciar rsyslog
- 
-  handlers:
-    - name: Reiniciar rsyslog
-      service:
-        name: rsyslog
-        state: restarted
-        enabled: yes
-```
- 
-#### Execució i idempotència
- 
-```bash
-# Primera execució: aplica tots els canvis
-ansible-playbook -i inventory.ini rsyslog.yml
-# localhost : ok=7  changed=5  unreachable=0  failed=0
- 
-# Execucions posteriors: idempotent, sense canvis
-ansible-playbook -i inventory.ini rsyslog.yml
-# localhost : ok=7  changed=0  unreachable=0  failed=0
-```
- 
-#### Verificació del port 514
- 
-```bash
-sudo ss -tulnp | grep 514
-# udp  UNCONN  0.0.0.0:514  ...  users:(("rsyslogd",pid=3104,fd=5))
-# tcp  LISTEN  0.0.0.0:514  ...  users:(("rsyslogd",pid=3104,fd=7))
-```
- 
----
- 
-### 5.3. Configuració de les Màquines Client
- 
-A cada màquina de la infraestructura s'afegeix una línia al fitxer de Rsyslog per reenviar tots els logs cap a `srv-logs`:
- 
-```bash
-echo "*.* @@10.0.6.239" | sudo tee -a /etc/rsyslog.d/50-default.conf
-sudo systemctl restart rsyslog
-```
- 
-> `@@` indica TCP (connexió fiable). En entorns de producció on la pèrdua de logs no és acceptable, sempre s'ha d'usar TCP en lloc d'UDP (`@`).
- 
-#### Regles del Security Group AWS
- 
-| Regla | Protocol | Port | Origen |
-| :--- | :--- | :--- | :--- |
-| Rsyslog UDP | UDP | 514 | `10.0.0.0/16` |
-| Rsyslog TCP | TCP | 514 | `10.0.0.0/16` |
- 
----
- 
-### 5.4. Separació de Logs per Hostname
- 
-Per facilitar l'auditoria, cada màquina escriu els seus logs en un fitxer independent:
- 
-```bash
-sudo mkdir /var/log/remote
-sudo nano /etc/rsyslog.d/remote.conf
-```
- 
-Contingut de `remote.conf`:
- 
-```
-$template RemoteLogs,"/var/log/remote/%HOSTNAME%.log"
-*.* ?RemoteLogs
-& stop
-```
- 
-```bash
-sudo chmod 755 /var/log/remote
-sudo chown syslog:adm /var/log/remote
-sudo systemctl restart rsyslog
-```
- 
-#### Verificació de la recepció per màquina
- 
-```bash
-ls /var/log/remote
-# srv-ldap.log  srv-logs.log
- 
-sudo tail -f /var/log/remote/srv-ldap.log
-# 2026-05-26T07:11:23+00:00 srv-ldap emilia: TEST AUDITORIA LDAP
-```
- 
----
- 
-### 5.5. Playbook ELK Stack: Elasticsearch + Kibana + Filebeat
- 
-El playbook `elk.yml` desplega automàticament l'stack complet de visualització de logs.
- 
-```yaml
----
-- name: Configurar Servidor Central de Logs (Rsyslog + ELK Stack)
-  hosts: localhost
-  become: yes
-  tasks:
- 
-  # ── 1. PREREQUISITS I REPOSITORIS ──────────────────────────────────────────
-    - name: Instal·lar dependències bàsiques
-      apt:
-        name: [apt-transport-https, gnupg2, curl]
-        state: present
-        update_cache: yes
- 
-    - name: Eliminar clau GPG anterior si existeix
-      file:
-        path: /usr/share/keyrings/elasticsearch-keyring.gpg
-        state: absent
- 
-    - name: Descarregar i desencriptar la clau GPG d'Elastic
-      shell: |
-        curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch \
-          | gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
-      args:
-        creates: /usr/share/keyrings/elasticsearch-keyring.gpg
- 
-    - name: Assegurar permisos correctes a la clau GPG
-      file:
-        path: /usr/share/keyrings/elasticsearch-keyring.gpg
-        mode: '0644'
-        owner: root
-        group: root
- 
-    - name: Afegir el repositori oficial d'Elastic 7.x
-      apt_repository:
-        repo: deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/7.x/apt stable main
-        state: present
-        filename: elastic-7.x
- 
-  # ── 2. CONFIGURACIÓ DE RSYSLOG ──────────────────────────────────────────────
-    - name: Assegurar el directori de logs remots amb permisos correctes
-      file:
-        path: /var/log/remote
-        state: directory
-        owner: syslog
-        group: adm
-        mode: '0755'
- 
-    - name: Habilitar recepció UDP a Rsyslog
-      lineinfile:
-        path: /etc/rsyslog.conf
-        regexp: '^#module\(load="imudp"\)'
-        line: 'module(load="imudp")'
-      notify: Reiniciar rsyslog
- 
-    - name: Habilitar recepció TCP 514 a Rsyslog
-      lineinfile:
-        path: /etc/rsyslog.conf
-        regexp: '^#input\(type="imtcp" port="514"\)'
-        line: 'input(type="imtcp" port="514")'
-      notify: Reiniciar rsyslog
- 
-    - name: Crear la plantilla de separació de logs per hostname
-      copy:
-        dest: /etc/rsyslog.d/remote.conf
-        content: |
-          $template RemoteLogs,"/var/log/remote/%HOSTNAME%.log"
-          *.* ?RemoteLogs
-          & stop
-      notify: Reiniciar rsyslog
- 
-  # ── 3. ELASTICSEARCH ────────────────────────────────────────────────────────
-    - name: Instal·lar Elasticsearch
-      apt:
-        name: elasticsearch
-        state: present
- 
-    - name: Configurar Elasticsearch per escoltar localment
-      lineinfile:
-        path: /etc/elasticsearch/elasticsearch.yml
-        regexp: '^#?network.host:'
-        line: 'network.host: 127.0.0.1'
-      notify: Reiniciar elasticsearch
- 
-    - name: Assegurar que Elasticsearch està actiu i s'inicia amb el sistema
-      service:
-        name: elasticsearch
-        state: started
-        enabled: yes
- 
-  # ── 4. KIBANA ───────────────────────────────────────────────────────────────
-    - name: Instal·lar Kibana
-      apt:
-        name: kibana
-        state: present
- 
-    - name: Configurar Kibana per ser accessible externament
-      lineinfile:
-        path: /etc/kibana/kibana.yml
-        regexp: '^#?server.host:'
-        line: 'server.host: "0.0.0.0"'
-      notify: Reiniciar kibana
- 
-    - name: Connectar Kibana amb Elasticsearch local
-      lineinfile:
-        path: /etc/kibana/kibana.yml
-        regexp: '^#?elasticsearch.hosts:'
-        line: 'elasticsearch.hosts: ["http://localhost:9200"]'
-      notify: Reiniciar kibana
- 
-    - name: Assegurar que Kibana està actiu i s'inicia amb el sistema
-      service:
-        name: kibana
-        state: started
-        enabled: yes
- 
-  # ── 5. FILEBEAT ─────────────────────────────────────────────────────────────
-    - name: Instal·lar Filebeat
-      apt:
-        name: filebeat
-        state: present
- 
-    - name: Configurar Filebeat per llegir /var/log/remote/
-      copy:
-        dest: /etc/filebeat/filebeat.yml
-        content: |
-          filebeat.inputs:
-          - type: log
-            enabled: true
-            paths:
-              - /var/log/remote/*.log
- 
-          output.elasticsearch:
-            hosts: ["localhost:9200"]
-      notify: Reiniciar filebeat
- 
-    - name: Assegurar que Filebeat està actiu i s'inicia amb el sistema
-      service:
-        name: filebeat
-        state: started
-        enabled: yes
- 
-  # ── HANDLERS ────────────────────────────────────────────────────────────────
-  handlers:
-    - name: Reiniciar rsyslog
-      service: { name: rsyslog, state: restarted }
-    - name: Reiniciar elasticsearch
-      service: { name: elasticsearch, state: restarted }
-    - name: Reiniciar kibana
-      service: { name: kibana, state: restarted }
-    - name: Reiniciar filebeat
-      service: { name: filebeat, state: restarted }
-```
- 
-#### Execució del playbook
- 
-```bash
-ansible-playbook -i inventory.ini elk.yml
-# PLAY RECAP *******************************************************************
-# localhost : ok=24  changed=11  unreachable=0  failed=0  skipped=0  rescued=0
-```
- 
----
- 
-### 5.6. Verificació a Kibana
- 
-Un cop desplegat l'ELK Stack, s'accedeix a Kibana i es crea un index pattern per visualitzar els logs:
- 
-| Paràmetre | Valor |
-| :--- | :--- |
-| **URL Kibana** | `http://52.4.133.45:5601` |
-| **Index pattern** | `filebeat*` |
-| **Timestamp field** | `@timestamp` |
-| **Índexos detectats** | `filebeat-7.17.29`, `filebeat-7.17.29-2026.05.28-000001` |
-| **Registres indexats** | **26.328 hits** |
- 
-> Kibana detecta correctament els dos índexos de Filebeat i mostra els 26.328 registres de logs de tota la infraestructura en temps real, identificats per `agent.hostname: srv-logs`.
- 
----
-
----
 
 ## 4.4. Automatització amb Ansible: Playbook Web + SFTP
 
@@ -1331,6 +968,365 @@ sudo systemctl status php8.5-fpm
 
 > [!TIP]
 > **Idempotència del playbook:** Gràcies als mòduls `copy`, `lineinfile`, `file` i `systemd`, el playbook és **idempotent**: es pot executar múltiples vegades sense efectes secundaris. Les tasques ja aplicades apareixen com `ok` i les que requereixen canvis com `changed`. El resultat final (`ok=25 changed=6 failed=0`) confirma que tota la infraestructura web queda desplegada en un sol comando.
+
+---
+ 
+## 5. Servidor de Logs: Rsyslog + ELK Stack
+ 
+![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=for-the-badge&logo=ansible&logoColor=white)
+![Elastic](https://img.shields.io/badge/Elastic-005571?style=for-the-badge&logo=elastic&logoColor=white)
+![Kibana](https://img.shields.io/badge/Kibana-005571?style=for-the-badge&logo=kibana&logoColor=white)
+![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
+![AWS EC2](https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)
+ 
+El servidor `srv-logs` centralitza els logs de tota la infraestructura mitjançant Rsyslog (recepció) i l'ELK Stack (indexació i visualització). Tota la configuració s'automatitza amb **Ansible**.
+ 
+> La creació de l'usuari d'administració i la configuració d'accés per clau pública d'aquesta màquina es descriu a la [secció §2.1](#21-prerequisit-global-accés-i-administració-de-màquines), que és comuna a totes les instàncies.
+ 
+### Paràmetres del servidor
+ 
+| Paràmetre | Valor |
+| :--- | :--- |
+| **Hostname** | `srv-logs` |
+| **Usuari d'administració** | `emilia` |
+| **IP privada** | `10.0.6.239` |
+| **IP pública** | `52.4.133.45` |
+| **Port Rsyslog** | `514` (UDP + TCP) |
+| **Port Kibana** | `5601` |
+| **Port Elasticsearch** | `9200` |
+| **Versió Ansible** | `2.20.1` |
+ 
+---
+ 
+### 5.1. Instal·lació i Estructura d'Ansible
+ 
+```bash
+sudo apt update && sudo apt install ansible -y
+ansible --version
+# ansible [core 2.20.1]
+ 
+# Crear l'estructura de treball
+mkdir ~/ansible && cd ~/ansible
+```
+ 
+Contingut de `inventory.ini`:
+ 
+```ini
+[logs]
+localhost ansible_connection=local
+```
+ 
+> Ansible s'administra a si mateix: el servidor de logs és alhora el controlador Ansible i el node gestionat.
+ 
+---
+ 
+### 5.2. Playbook Rsyslog: Recepció Centralitzada de Logs
+ 
+El playbook `rsyslog.yml` configura Rsyslog per acceptar logs de totes les màquines de la xarxa via UDP i TCP al port 514.
+ 
+```yaml
+---
+- hosts: logs
+  become: yes
+ 
+  tasks:
+    - name: Instal·lar rsyslog
+      apt:
+        name: rsyslog
+        state: present
+        update_cache: yes
+ 
+    - name: Habilitar recepció UDP
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regexp: '^#module\(load="imudp"\)'
+        line: 'module(load="imudp")'
+ 
+    - name: Obrir port UDP 514
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regexp: '^#input\(type="imudp" port="514"\)'
+        line: 'input(type="imudp" port="514")'
+ 
+    - name: Habilitar recepció TCP
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regexp: '^#module\(load="imtcp"\)'
+        line: 'module(load="imtcp")'
+ 
+    - name: Obrir port TCP 514
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regexp: '^#input\(type="imtcp" port="514"\)'
+        line: 'input(type="imtcp" port="514")'
+      notify: Reiniciar rsyslog
+ 
+  handlers:
+    - name: Reiniciar rsyslog
+      service:
+        name: rsyslog
+        state: restarted
+        enabled: yes
+```
+ 
+#### Execució i idempotència
+ 
+```bash
+# Primera execució: aplica tots els canvis
+ansible-playbook -i inventory.ini rsyslog.yml
+# localhost : ok=7  changed=5  unreachable=0  failed=0
+ 
+# Execucions posteriors: idempotent, sense canvis
+ansible-playbook -i inventory.ini rsyslog.yml
+# localhost : ok=7  changed=0  unreachable=0  failed=0
+```
+ 
+#### Verificació del port 514
+ 
+```bash
+sudo ss -tulnp | grep 514
+# udp  UNCONN  0.0.0.0:514  ...  users:(("rsyslogd",pid=3104,fd=5))
+# tcp  LISTEN  0.0.0.0:514  ...  users:(("rsyslogd",pid=3104,fd=7))
+```
+ 
+---
+ 
+### 5.3. Configuració de les Màquines Client
+ 
+A cada màquina de la infraestructura s'afegeix una línia al fitxer de Rsyslog per reenviar tots els logs cap a `srv-logs`:
+ 
+```bash
+echo "*.* @@10.0.6.239" | sudo tee -a /etc/rsyslog.d/50-default.conf
+sudo systemctl restart rsyslog
+```
+ 
+> `@@` indica TCP (connexió fiable). En entorns de producció on la pèrdua de logs no és acceptable, sempre s'ha d'usar TCP en lloc d'UDP (`@`).
+ 
+#### Regles del Security Group AWS
+ 
+| Regla | Protocol | Port | Origen |
+| :--- | :--- | :--- | :--- |
+| Rsyslog UDP | UDP | 514 | `10.0.0.0/16` |
+| Rsyslog TCP | TCP | 514 | `10.0.0.0/16` |
+ 
+---
+ 
+### 5.4. Separació de Logs per Hostname
+ 
+Per facilitar l'auditoria, cada màquina escriu els seus logs en un fitxer independent:
+ 
+```bash
+sudo mkdir /var/log/remote
+sudo nano /etc/rsyslog.d/remote.conf
+```
+ 
+Contingut de `remote.conf`:
+ 
+```
+$template RemoteLogs,"/var/log/remote/%HOSTNAME%.log"
+*.* ?RemoteLogs
+& stop
+```
+ 
+```bash
+sudo chmod 755 /var/log/remote
+sudo chown syslog:adm /var/log/remote
+sudo systemctl restart rsyslog
+```
+ 
+#### Verificació de la recepció per màquina
+ 
+```bash
+ls /var/log/remote
+# srv-ldap.log  srv-logs.log
+ 
+sudo tail -f /var/log/remote/srv-ldap.log
+# 2026-05-26T07:11:23+00:00 srv-ldap emilia: TEST AUDITORIA LDAP
+```
+ 
+---
+ 
+### 5.5. Playbook ELK Stack: Elasticsearch + Kibana + Filebeat
+ 
+El playbook `elk.yml` desplega automàticament l'stack complet de visualització de logs.
+ 
+```yaml
+---
+- name: Configurar Servidor Central de Logs (Rsyslog + ELK Stack)
+  hosts: localhost
+  become: yes
+  tasks:
+ 
+  # ── 1. PREREQUISITS I REPOSITORIS ──────────────────────────────────────────
+    - name: Instal·lar dependències bàsiques
+      apt:
+        name: [apt-transport-https, gnupg2, curl]
+        state: present
+        update_cache: yes
+ 
+    - name: Eliminar clau GPG anterior si existeix
+      file:
+        path: /usr/share/keyrings/elasticsearch-keyring.gpg
+        state: absent
+ 
+    - name: Descarregar i desencriptar la clau GPG d'Elastic
+      shell: |
+        curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch \
+          | gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/elasticsearch-keyring.gpg
+ 
+    - name: Assegurar permisos correctes a la clau GPG
+      file:
+        path: /usr/share/keyrings/elasticsearch-keyring.gpg
+        mode: '0644'
+        owner: root
+        group: root
+ 
+    - name: Afegir el repositori oficial d'Elastic 7.x
+      apt_repository:
+        repo: deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/7.x/apt stable main
+        state: present
+        filename: elastic-7.x
+ 
+  # ── 2. CONFIGURACIÓ DE RSYSLOG ──────────────────────────────────────────────
+    - name: Assegurar el directori de logs remots amb permisos correctes
+      file:
+        path: /var/log/remote
+        state: directory
+        owner: syslog
+        group: adm
+        mode: '0755'
+ 
+    - name: Habilitar recepció UDP a Rsyslog
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regexp: '^#module\(load="imudp"\)'
+        line: 'module(load="imudp")'
+      notify: Reiniciar rsyslog
+ 
+    - name: Habilitar recepció TCP 514 a Rsyslog
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regexp: '^#input\(type="imtcp" port="514"\)'
+        line: 'input(type="imtcp" port="514")'
+      notify: Reiniciar rsyslog
+ 
+    - name: Crear la plantilla de separació de logs per hostname
+      copy:
+        dest: /etc/rsyslog.d/remote.conf
+        content: |
+          $template RemoteLogs,"/var/log/remote/%HOSTNAME%.log"
+          *.* ?RemoteLogs
+          & stop
+      notify: Reiniciar rsyslog
+ 
+  # ── 3. ELASTICSEARCH ────────────────────────────────────────────────────────
+    - name: Instal·lar Elasticsearch
+      apt:
+        name: elasticsearch
+        state: present
+ 
+    - name: Configurar Elasticsearch per escoltar localment
+      lineinfile:
+        path: /etc/elasticsearch/elasticsearch.yml
+        regexp: '^#?network.host:'
+        line: 'network.host: 127.0.0.1'
+      notify: Reiniciar elasticsearch
+ 
+    - name: Assegurar que Elasticsearch està actiu i s'inicia amb el sistema
+      service:
+        name: elasticsearch
+        state: started
+        enabled: yes
+ 
+  # ── 4. KIBANA ───────────────────────────────────────────────────────────────
+    - name: Instal·lar Kibana
+      apt:
+        name: kibana
+        state: present
+ 
+    - name: Configurar Kibana per ser accessible externament
+      lineinfile:
+        path: /etc/kibana/kibana.yml
+        regexp: '^#?server.host:'
+        line: 'server.host: "0.0.0.0"'
+      notify: Reiniciar kibana
+ 
+    - name: Connectar Kibana amb Elasticsearch local
+      lineinfile:
+        path: /etc/kibana/kibana.yml
+        regexp: '^#?elasticsearch.hosts:'
+        line: 'elasticsearch.hosts: ["http://localhost:9200"]'
+      notify: Reiniciar kibana
+ 
+    - name: Assegurar que Kibana està actiu i s'inicia amb el sistema
+      service:
+        name: kibana
+        state: started
+        enabled: yes
+ 
+  # ── 5. FILEBEAT ─────────────────────────────────────────────────────────────
+    - name: Instal·lar Filebeat
+      apt:
+        name: filebeat
+        state: present
+ 
+    - name: Configurar Filebeat per llegir /var/log/remote/
+      copy:
+        dest: /etc/filebeat/filebeat.yml
+        content: |
+          filebeat.inputs:
+          - type: log
+            enabled: true
+            paths:
+              - /var/log/remote/*.log
+ 
+          output.elasticsearch:
+            hosts: ["localhost:9200"]
+      notify: Reiniciar filebeat
+ 
+    - name: Assegurar que Filebeat està actiu i s'inicia amb el sistema
+      service:
+        name: filebeat
+        state: started
+        enabled: yes
+ 
+  # ── HANDLERS ────────────────────────────────────────────────────────────────
+  handlers:
+    - name: Reiniciar rsyslog
+      service: { name: rsyslog, state: restarted }
+    - name: Reiniciar elasticsearch
+      service: { name: elasticsearch, state: restarted }
+    - name: Reiniciar kibana
+      service: { name: kibana, state: restarted }
+    - name: Reiniciar filebeat
+      service: { name: filebeat, state: restarted }
+```
+ 
+#### Execució del playbook
+ 
+```bash
+ansible-playbook -i inventory.ini elk.yml
+# PLAY RECAP *******************************************************************
+# localhost : ok=24  changed=11  unreachable=0  failed=0  skipped=0  rescued=0
+```
+ 
+---
+ 
+### 5.6. Verificació a Kibana
+ 
+Un cop desplegat l'ELK Stack, s'accedeix a Kibana i es crea un index pattern per visualitzar els logs:
+ 
+| Paràmetre | Valor |
+| :--- | :--- |
+| **URL Kibana** | `http://52.4.133.45:5601` |
+| **Index pattern** | `filebeat*` |
+| **Timestamp field** | `@timestamp` |
+| **Índexos detectats** | `filebeat-7.17.29`, `filebeat-7.17.29-2026.05.28-000001` |
+| **Registres indexats** | **26.328 hits** |
+ 
+> Kibana detecta correctament els dos índexos de Filebeat i mostra els 26.328 registres de logs de tota la infraestructura en temps real, identificats per `agent.hostname: srv-logs`.
 
 ---
 
