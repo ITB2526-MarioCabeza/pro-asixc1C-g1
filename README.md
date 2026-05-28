@@ -26,8 +26,6 @@ L'objectiu principal és garantir una gestió de dades eficient, segura i altame
 
 ---
 
-# WEB 
-
 <div align="center">
   <h1>🌐 Màquina WEB: Servidor Nginx + SFTP</h1>
   <p><i>Configuració inicial, accés per clau pública/privada i desplegament del servei web per a InnovateTech.</i></p>
