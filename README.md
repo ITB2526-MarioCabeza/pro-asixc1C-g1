@@ -27,6 +27,318 @@ L'objectiu principal és garantir una gestió de dades eficient, segura i altame
 ---
 
 <div align="center">
+  <h1>📁 Màquina WEB: Configuració SFTP + LDAP</h1>
+  <p><i>Integració LDAP amb SSSD, configuració del servei SFTP i gestió d'usuaris per a InnovateTech.</i></p>
+
+  ![SFTP](https://img.shields.io/badge/SFTP-4D4D4D?style=for-the-badge&logo=openssh&logoColor=white)
+  ![LDAP](https://img.shields.io/badge/LDAP-0052CC?style=for-the-badge&logo=ldap&logoColor=white)
+  ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
+  ![AWS EC2](https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)
+</div>
+
+---
+
+## 👥 Equip de Desenvolupament (pro-asixc1C-g1)
+Aquest projecte ha estat desenvolupat i mantingut per:
+* **Laia Coca**
+* **Emilia Tikohonova**
+* **Brenda Castro**
+* **Mario Cabeza**
+
+---
+
+## 📖 Descripció de l'Apartat
+
+Aquest document descriu la configuració del servei **SFTP** sobre la màquina web d'InnovateTech, incloent la integració amb el servidor **LDAP** mitjançant **SSSD** per a l'autenticació centralitzada d'usuaris, la configuració del `sshd_config` per restringir l'accés SFTP i la creació i verificació dels directoris personals dels membres de l'equip.
+
+---
+
+# SFTP + LDAP
+
+## 🗺️ Apartat 3: Configuració SFTP amb Integració LDAP
+
+### 📋 Paquets Instal·lats
+
+| Paquet | Versió | Funció |
+| :--- | :--- | :--- |
+| `sssd` | 2.12.0-1ubuntu5 | System Security Services Daemon |
+| `sssd-ldap` | 2.12.0-1ubuntu5 | Connector LDAP per a SSSD |
+| `libpam-sss` | 2.12.0-1ubuntu5 | Mòdul PAM per a SSSD |
+| `libnss-sss` | 2.12.0-1ubuntu5 | Biblioteca NSS per a SSSD |
+| `ldap-utils` | 2.6.10+dfsg-1ubuntu5 | Eines de línia de comandes LDAP |
+| `openssh-server` | 1:10.2p1-2ubuntu3.2 | Servidor SSH/SFTP |
+
+---
+
+### 🔧 3.1. Instal·lació dels Paquets Necessaris
+
+```bash
+# Actualitzar la llista de paquets
+sudo apt update
+
+# Instal·lar tots els paquets necessaris per a SSSD i LDAP
+sudo apt install -y sssd sssd-ldap libpam-sss libnss-sss ldap-utils openssh-server
+
+# Verificar que tots els paquets estan correctament instal·lats
+dpkg -l sssd sssd-ldap libpam-sss libnss-sss openssh-server
+```
+
+---
+
+### 🗂️ 3.2. Configuració del Fitxer SSSD (`/etc/sssd/sssd.conf`)
+
+El fitxer `sssd.conf` és el nucli de la integració LDAP. Defineix com el sistema resol els usuaris i grups contra el servidor LDAP d'InnovateTech.
+
+```bash
+sudo nano /etc/sssd/sssd.conf
+```
+
+Contingut del fitxer:
+
+```ini
+[sssd]
+services = nss, pam
+config_file_version = 2
+domains = innovatetech.cat
+
+[domain/innovatetech.cat]
+id_provider = ldap
+auth_provider = ldap
+
+ldap_uri = ldap://10.0.1.224
+
+ldap_search_base = dc=innovatetech,dc=cat
+
+ldap_user_search_base  = ou=users,dc=innovatetech,dc=cat
+ldap_group_search_base = ou=groups,dc=innovatetech,dc=cat
+
+ldap_default_bind_dn  = cn=admin,dc=innovatetech,dc=cat
+ldap_default_authtok  = Aneto_3404
+
+ldap_schema = rfc2307
+
+ldap_tls_reqcert = never
+
+override_homedir = /home/%u
+fallback_homedir = /home/%u
+default_shell    = /bin/bash
+
+cache_credentials = true
+
+ldap_id_use_start_tls = false
+
+ldap_user_object_class    = posixAccount
+ldap_user_name            = uid
+ldap_user_uid_number      = uidNumber
+ldap_user_gid_number      = gidNumber
+ldap_user_home_directory  = homeDirectory
+ldap_user_shell           = loginShell
+ldap_user_password        = userPassword
+
+ldap_auth_disable_tls_never_use_in_production = true
+ldap_pwd_policy = none
+```
+
+Un cop desat el fitxer, s'apliquen els permisos correctes (obligatoris perquè SSSD arrenqui):
+
+```bash
+# Permisos estrictes requerits per SSSD
+sudo chmod 600 /etc/sssd/sssd.conf
+sudo chown root:root /etc/sssd/sssd.conf
+```
+
+#### Verificació de la integració NSS i PAM
+
+```bash
+# Comprovar que NSS resol usuaris via SSS
+grep -E "passwd|group|shadow" /etc/nsswitch.conf
+# passwd:   files sss
+# group:    files sss
+# shadow:   files sss
+# gshadow:  files sss
+# netgroup: nis sss
+
+# Comprovar que PAM utilitza el mòdul SSS per a l'autenticació
+grep -i sss /etc/pam.d/common-auth
+# auth  [success=1 default=ignore]  pam_sss.so use_first_pass
+```
+
+---
+
+### 🔒 3.3. Configuració del Servidor SSH per a SFTP (`/etc/ssh/sshd_config`)
+
+Es modifica la configuració del dimoni SSH per habilitar l'autenticació per contrasenya (necessària per als usuaris LDAP) i per restringir el grup `sftp-users` a accés exclusiu SFTP dins del seu directori personal (*chroot*).
+
+```bash
+sudo nano /etc/ssh/sshd_config
+```
+
+Paràmetres clau modificats:
+
+```
+# Habilitar autenticació per contrasenya per als usuaris LDAP
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
+UsePAM yes
+
+# Subsistema SFTP intern (substitueix el binari extern)
+Subsystem sftp internal-sftp
+
+# Restricció per al grup sftp-users: accés chroot SFTP exclusiu
+Match Group sftp-users
+        ChrootDirectory /home/%u
+        ForceCommand internal-sftp
+        AllowTcpForwarding no
+        X11Forwarding no
+```
+
+---
+
+### 📂 3.4. Creació dels Directoris Personals i Assignació de Permisos
+
+Per a cada membre de l'equip es crea un directori `files` dins del seu home, s'estableix `root:root` com a propietari del home (requisit del chroot SSH) i l'usuari com a propietari del subdirectori `files`.
+
+```bash
+# --- Usuari: brenda ---
+sudo mkdir -p /home/brenda/files
+sudo chown root:root /home/brenda
+sudo chmod 755 /home/brenda
+sudo chown brenda:brenda /home/brenda/files
+sudo chmod 700 /home/brenda/files
+
+# --- Usuari: emilia ---
+sudo mkdir -p /home/emilia/files
+sudo chown root:root /home/emilia
+sudo chmod 755 /home/emilia
+sudo chown emilia:emilia /home/emilia/files
+sudo chmod 700 /home/emilia/files
+
+# --- Usuari: laia ---
+sudo mkdir -p /home/laia/files
+sudo chown root:root /home/laia
+sudo chmod 755 /home/laia
+sudo chown laia:laia /home/laia/files
+sudo chmod 700 /home/laia/files
+
+# --- Usuari: mario ---
+sudo mkdir -p /home/mario/files
+sudo chown root:root /home/mario
+sudo chmod 755 /home/mario
+sudo chown mario:mario /home/mario/files
+sudo chmod 700 /home/mario/files
+```
+
+#### Afegir els usuaris al grup `sftp-users`
+
+```bash
+sudo usermod -aG sftp-users brenda
+sudo usermod -aG sftp-users emilia
+sudo usermod -aG sftp-users laia
+sudo usermod -aG sftp-users mario
+
+# Verificar que tots els usuaris pertanyen al grup
+getent group sftp-users
+# sftp-users:x:1002:brenda,emilia,laia,mario
+```
+
+#### Verificació de l'estructura de directoris
+
+```bash
+ls -la /home/
+# drwxr-xr-x  3 root    root    4096 May 27 22:40 brenda
+# drwxr-xr-x  3 root    root    4096 May 28 00:37 emilia
+# drwxr-xr-x  3 root    root    4096 May 28 00:37 laia
+# drwxr-xr-x  3 root    root    4096 May 28 00:38 mario
+# drwxr-x---  3 ubrenda ubrenda 4096 May 28 01:16 ubrenda
+
+ls -la /home/brenda/
+# drwx------  2 brenda  brenda  4096 May 28 00:58 files
+```
+
+---
+
+### ✅ 3.5. Verificació Final dels Serveis i Usuaris LDAP
+
+#### Estat dels serveis
+
+```bash
+# Verificar que SSSD està actiu
+sudo systemctl status sssd
+# ● sssd.service - System Security Services Daemon
+#      Active: active (running) since Thu 2026-05-28 00:56:10 UTC; 27min ago
+
+# Verificar que SSH està actiu
+sudo systemctl status sshd
+# ● ssh.service - OpenBSD Secure Shell server
+#      Active: active (running) since Thu 2026-05-28 00:44:27 UTC; 39min ago
+```
+
+#### Verificació de resolució d'usuaris LDAP
+
+```bash
+# Comprovar que el sistema resol els usuaris via LDAP
+getent passwd emilia
+# emilia:*:10002:10002:Emilia:/home/emilia:/bin/bash
+
+getent passwd laia
+# laia:*:10003:10003:Laia:/home/laia:/bin/bash
+
+getent passwd brenda
+# brenda:*:10001:10001:Brenda:/home/brenda:/bin/bash
+
+getent passwd mario
+# mario:*:10004:10004:Mario:/home/mario:/bin/bash
+```
+
+#### Verificació de connectivitat LDAP
+
+```bash
+# Comprovar l'autenticació contra el servidor LDAP
+ldapwhoami -x -H ldap://10.0.1.224 -D "uid=brenda,ou=users,dc=innovatetech,dc=cat" -w Aneto_3404
+# dn:uid=brenda,ou=users,dc=innovatetech,dc=cat
+
+# Llistar tots els usuaris del directori LDAP
+ldapsearch -x -H ldap://10.0.1.224 \
+  -b "ou=users,dc=innovatetech,dc=cat" \
+  -D "cn=admin,dc=innovatetech,dc=cat" \
+  -w Aneto_3404 \
+  "(objectClass=posixAccount)" uid uidNumber
+# brenda  → uidNumber: 10001
+# emilia  → uidNumber: 10002
+# laia    → uidNumber: 10003
+# mario   → uidNumber: 10004
+# result: 0 Success
+```
+
+#### Prova de connexió SFTP
+
+```bash
+# Connexió SFTP amb l'usuari brenda
+sftp brenda@localhost
+# (brenda@localhost) Password:
+# Connected to localhost.
+
+sftp> ls
+# files
+
+sftp> cd files
+sftp> ls
+# hostname
+
+sftp> exit
+
+# Connexió SFTP amb l'usuari emilia
+sftp emilia@localhost
+# (emilia@localhost) Password:
+# Connected to localhost.
+```
+
+---
+
+> [!TIP]
+> **Estructura del Chroot:** El directori arrel del chroot (`/home/%u`) ha de ser propietat de `root:root` i tenir permisos `755`. Si l'usuari fos propietari del seu propi home, el dimoni SSH rebutjaria la connexió amb un error de configuració insegura. El subdirectori `files` és on l'usuari té permisos d'escriptura reals.
+
+<div align="center">
   <h1>🌐 Màquina WEB: Servidor Nginx + SFTP</h1>
   <p><i>Configuració inicial, accés per clau pública/privada i desplegament del servei web per a InnovateTech.</i></p>
 
