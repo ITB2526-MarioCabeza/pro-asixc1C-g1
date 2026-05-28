@@ -26,6 +26,8 @@ L'objectiu principal és garantir una gestió de dades eficient, segura i altame
 
 ---
 
+# BASE DE DADES 
+
 ## 🗺️ Apartat 1: Disseny del Model Relacional (16 Taules)
 
 L'esquema de la base de dades s'estructura de forma homogènia en **català**, consolidant un total de **16 taules** operatives. Aquestes taules estan dividides lògicament en diversos mòduls funcionals per facilitar-ne el manteniment i l'escalabilitat.
