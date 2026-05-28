@@ -847,6 +847,493 @@ Un cop desplegat l'ELK Stack, s'accedeix a Kibana i es crea un index pattern per
  
 ---
 
+---
+
+## 4.4. Automatització amb Ansible: Playbook Web + SFTP
+
+Tota la configuració de la màquina `srv-web-ftps` s'ha automatitzat mitjançant un **playbook d'Ansible** que desplega en un sol comando: els paquets web, la configuració de Nginx, els fitxers PHP de la plataforma, la integració LDAP via SSSD, el servei SFTP amb chroot i tots els serveis associats.
+
+### Instal·lació d'Ansible
+
+```bash
+sudo apt install -y ansible
+
+# Verificar la versió instal·lada
+ansible --version
+# ansible [core 2.20.1]
+#   python version = 3.14.4
+#   jinja version = 3.1.6
+#   pyyaml version = 6.0.3 (with libyaml v0.2.5)
+```
+
+### Execució del Playbook
+
+```bash
+ansible-playbook ~/ansible-sftp/playbook-sftp.yml
+```
+
+Resultat de l'execució:
+
+```
+PLAY [Configuració Web + SFTP amb autenticació LDAP – InnovateTech]
+
+TASK [Gathering Facts]                                  ok: [localhost]
+TASK [Instal·lar paquets web i SFTP]                    ok: [localhost]
+TASK [Desplegar configuració Nginx]                     ok: [localhost]
+TASK [Desplegar index.php]                              ok: [localhost]
+TASK [Desplegar login.php]                              ok: [localhost]
+TASK [Desplegar logout.php]                             ok: [localhost]
+TASK [Desplegar style.css]                              ok: [localhost]
+TASK [Crear directori /etc/sssd/pki]                    changed: [localhost]
+TASK [Desplegar sssd.conf]                              changed: [localhost]
+TASK [Configurar nsswitch.conf]                         ok: [localhost] (x3)
+TASK [Activar pam_mkhomedir]                            ok: [localhost]
+TASK [Desplegar sshd_config]                            ok: [localhost]
+TASK [Crear grup sftp-users]                            ok: [localhost]
+TASK [Assegurar SSSD actiu abans de crear directoris]   ok: [localhost]
+TASK [Esperar que SSSD estigui llest]                   ok: [localhost]
+TASK [Crear directori home de cada usuari]              ok: [localhost] (x4)
+TASK [Crear subdirectori files per a cada usuari]       ok: [localhost] (x4)
+TASK [Afegir usuaris al grup sftp-users]                changed: [localhost] (x4)
+TASK [Netejar caché SSSD]                               changed: [localhost] (x2)
+TASK [Recrear directoris caché SSSD]                    changed: [localhost] (x2)
+TASK [Assegurar Nginx actiu]                            ok: [localhost]
+TASK [Assegurar PHP-FPM actiu]                          ok: [localhost]
+TASK [Assegurar SSSD actiu]                             ok: [localhost]
+TASK [Assegurar SSH actiu]                              ok: [localhost]
+RUNNING HANDLER [Reiniciar SSSD]                        changed: [localhost]
+
+PLAY RECAP *************************************************************
+localhost : ok=25  changed=6  unreachable=0  failed=0  skipped=0  rescued=0  ignored=0
+```
+
+---
+
+### Contingut complet del Playbook (`playbook-sftp.yml`)
+
+```yaml
+---
+- name: Configuració Web + SFTP amb autenticació LDAP - InnovateTech
+  hosts: localhost
+  connection: local
+  become: true
+
+  vars:
+    ldap_uri: "ldap://10.0.1.224"
+    ldap_public_uri: "ldap://52.71.124.228"
+    ldap_base_dn: "dc=innovatetech,dc=cat"
+    ldap_admin_dn: "cn=admin,dc=innovatetech,dc=cat"
+    ldap_admin_password: "Aneto_3404"
+    sftp_users:
+      - { name: brenda, uid: 10001, gid: 10001 }
+      - { name: emilia, uid: 10002, gid: 10002 }
+      - { name: laia,   uid: 10003, gid: 10003 }
+      - { name: mario,  uid: 10004, gid: 10004 }
+
+  tasks:
+
+  # ============================================================
+  # BLOC 1 — INSTAL·LACIÓ DE PAQUETS
+  # ============================================================
+    - name: Instal·lar paquets web i SFTP
+      apt:
+        name:
+          - nginx
+          - php-fpm
+          - php-ldap
+          - php-mysql
+          - sssd
+          - sssd-ldap
+          - libpam-sss
+          - libnss-sss
+          - ldap-utils
+          - openssh-server
+        state: present
+        update_cache: true
+
+  # ============================================================
+  # BLOC 2 — CONFIGURACIÓ NGINX
+  # ============================================================
+    - name: Desplegar configuració Nginx
+      copy:
+        dest: /etc/nginx/sites-enabled/default
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          server {
+            listen 80;
+            root /var/www/html;
+            index index.php;
+            location / {
+              try_files $uri $uri/ /index.php;
+            }
+            location ~ \.php$ {
+              include snippets/fastcgi-php.conf;
+              fastcgi_pass unix:/run/php/php-fpm.sock;
+            }
+          }
+      notify: Reiniciar Nginx
+
+  # ============================================================
+  # BLOC 3 — FITXERS PHP DE LA WEB
+  # ============================================================
+    - name: Desplegar index.php
+      copy:
+        dest: /var/www/html/index.php
+        owner: www-data
+        group: www-data
+        mode: '0644'
+        content: |
+          <?php
+          session_start();
+          if(!isset($_SESSION['user'])){
+            header("Location: login.php");
+            exit();
+          }
+          $user=$_SESSION['user'];
+          ?>
+          <html>
+          <head><link rel="stylesheet" href="style.css"></head>
+          <body>
+          <h1>G01 ASIXc1C - InnovateTech Portal</h1>
+          <div class="user">Usuari LDAP: <?php echo $user; ?></div>
+          <div class="grid">
+            <!-- AUDIO -->
+            <div class="card">
+              <h2>Streaming Àudio</h2>
+              <audio controls>
+                <source src="http://3.91.112.0:8000/streaming_directe.mp3">
+              </audio>
+              <h2 style="margin-top:20px;">Vídeo</h2>
+              <iframe class="video-small" src="http://18.209.130.19/player.html"></iframe>
+            </div>
+            <!-- VIDEOCONFERÈNCIA -->
+            <div class="card">
+              <h2>Videoconferència</h2>
+              <a href="https://g01asixc1c-videoconferencia.duckdns.org" target="_blank">
+                <button>Entrar a videoconferència</button>
+              </a>
+            </div>
+            <!-- KIBANA -->
+            <div class="card">
+              <h2>Kibana</h2>
+              <iframe src="http://52.4.133.45:5601" height="450"></iframe>
+            </div>
+          </div>
+          <!-- BD -->
+          <div class="card">
+            <h2>Base de Dades: innovatetech_db</h2>
+            <?php
+            $conn=new mysqli("34.203.238.96","root","pirineus");
+            if($conn->connect_error){ die("<h3>Error BD: ".$conn->connect_error."</h3>"); }
+            $conn->select_db("innovatetech_db");
+            $tables=$conn->query("SHOW TABLES");
+            while($t=$tables->fetch_array()){
+              $table=$t[0];
+              echo "<h3>Taula: $table</h3>";
+              $structure=$conn->query("DESCRIBE `$table`");
+              echo "<table><tr><th>Field</th><th>Type</th><th>Null</th><th>Key</th></tr>";
+              while($f=$structure->fetch_assoc()){
+                echo "<tr><td>{$f['Field']}</td><td>{$f['Type']}</td><td>{$f['Null']}</td><td>{$f['Key']}</td></tr>";
+              }
+              echo "</table>";
+              $rows=$conn->query("SELECT * FROM `$table` LIMIT 15");
+              if($rows){
+                echo "<table><tr>";
+                foreach($rows->fetch_fields() as $col){ echo "<th>{$col->name}</th>"; }
+                echo "</tr>";
+                while($r=$rows->fetch_assoc()){
+                  echo "<tr>";
+                  foreach($r as $v){ echo "<td>".htmlspecialchars($v)."</td>"; }
+                  echo "</tr>";
+                }
+                echo "</table>";
+              }
+            }
+            ?>
+          </div>
+          <br><a href="logout.php"><button>Logout</button></a>
+          </body></html>
+
+    - name: Desplegar login.php
+      copy:
+        dest: /var/www/html/login.php
+        owner: www-data
+        group: www-data
+        mode: '0644'
+        content: |
+          <?php
+          session_start();
+          $ldap_server="ldap://52.71.124.228";
+          $base_dn="dc=innovatetech,dc=cat";
+          if($_POST){
+            $user=$_POST['username'];
+            $pass=$_POST['password'];
+            $conn=ldap_connect($ldap_server);
+            ldap_set_option($conn,LDAP_OPT_PROTOCOL_VERSION,3);
+            $search=ldap_search($conn,$base_dn,"(uid=$user)");
+            $entries=ldap_get_entries($conn,$search);
+            if($entries["count"]>0){
+              $dn=$entries[0]["dn"];
+              if(@ldap_bind($conn,$dn,$pass)){
+                $_SESSION['user']=$user;
+                header("Location:index.php");
+                exit();
+              }
+            }
+            $error="Login incorrecte";
+          }
+          ?>
+          <form method="POST">
+            <input name="username" placeholder="Usuari">
+            <input type="password" name="password" placeholder="Password">
+            <button>Login</button>
+          </form>
+          <?php if(isset($error)) echo $error; ?>
+
+    - name: Desplegar logout.php
+      copy:
+        dest: /var/www/html/logout.php
+        owner: www-data
+        group: www-data
+        mode: '0644'
+        content: |
+          <?php
+          session_start();
+          session_destroy();
+          header("Location: login.php");
+          exit();
+          ?>
+
+    - name: Desplegar style.css
+      copy:
+        dest: /var/www/html/style.css
+        owner: www-data
+        group: www-data
+        mode: '0644'
+        content: |
+          body{ background:#0f172a; color:white; font-family:Arial; margin:0; padding:30px; }
+          h1{ text-align:center; font-size:40px; margin-bottom:10px; }
+          .user{ text-align:center; margin-bottom:30px; color:#93c5fd; font-size:18px; }
+          .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(500px,1fr)); gap:20px; }
+          .card{ background:#1e293b; padding:20px; border-radius:15px; margin-bottom:20px; }
+          iframe{ width:100%; border:none; border-radius:10px; }
+          audio{ width:100%; }
+          .video-small{ height:360px; }
+          button{ background:#2563eb; color:white; border:none; padding:12px 20px; border-radius:8px; cursor:pointer; font-size:15px; }
+          table{ width:100%; border-collapse:collapse; background:white; color:black; }
+          th,td{ border:1px solid #ccc; padding:6px; }
+          th{ background:#ddd; }
+
+  # ============================================================
+  # BLOC 4 — CONFIGURACIÓ SSSD
+  # ============================================================
+    - name: Crear directori /etc/sssd/pki
+      file:
+        path: /etc/sssd/pki
+        state: directory
+        owner: root
+        group: root
+        mode: '0711'
+
+    - name: Desplegar sssd.conf
+      copy:
+        dest: /etc/sssd/sssd.conf
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          [sssd]
+          services = nss, pam
+          config_file_version = 2
+          domains = innovatetech.cat
+
+          [domain/innovatetech.cat]
+          id_provider = ldap
+          auth_provider = ldap
+          ldap_uri = {{ ldap_uri }}
+          ldap_search_base = {{ ldap_base_dn }}
+          ldap_user_search_base  = ou=users,{{ ldap_base_dn }}
+          ldap_group_search_base = ou=groups,{{ ldap_base_dn }}
+          ldap_default_bind_dn   = {{ ldap_admin_dn }}
+          ldap_default_authtok   = {{ ldap_admin_password }}
+          ldap_schema = rfc2307
+          ldap_tls_reqcert = never
+          ldap_id_use_start_tls = false
+          ldap_auth_disable_tls_never_use_in_production = true
+          ldap_pwd_policy = none
+          ldap_user_object_class   = posixAccount
+          ldap_user_name           = uid
+          ldap_user_uid_number     = uidNumber
+          ldap_user_gid_number     = gidNumber
+          ldap_user_home_directory = homeDirectory
+          ldap_user_shell          = loginShell
+          ldap_user_password       = userPassword
+          override_homedir = /home/%u
+          fallback_homedir = /home/%u
+          default_shell    = /bin/bash
+          cache_credentials = true
+      notify: Reiniciar SSSD
+
+  # ============================================================
+  # BLOC 5 — CONFIGURACIÓ NSS i PAM
+  # ============================================================
+    - name: Configurar nsswitch.conf
+      lineinfile:
+        path: /etc/nsswitch.conf
+        regexp: "^{{ item }}:"
+        line: "{{ item }}: files sss"
+      loop:
+        - passwd
+        - group
+        - shadow
+      notify: Reiniciar SSSD
+
+    - name: Activar pam_mkhomedir
+      lineinfile:
+        path: /etc/pam.d/common-session
+        line: "session optional pam_mkhomedir.so skel=/etc/skel umask=077"
+        state: present
+
+  # ============================================================
+  # BLOC 6 — CONFIGURACIÓ SSHD
+  # ============================================================
+    - name: Desplegar sshd_config
+      copy:
+        dest: /etc/ssh/sshd_config
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          Include /etc/ssh/sshd_config.d/*.conf
+          PasswordAuthentication yes
+          KbdInteractiveAuthentication yes
+          UsePAM yes
+          PubkeyAuthentication yes
+          PermitRootLogin prohibit-password
+          PrintMotd no
+          AcceptEnv LANG LC_*
+          Subsystem sftp internal-sftp
+          Match Group sftp-users
+              ChrootDirectory /home/%u
+              ForceCommand internal-sftp
+              AllowTcpForwarding no
+              X11Forwarding no
+      notify: Reiniciar SSH
+
+  # ============================================================
+  # BLOC 7 — GRUP I DIRECTORIS SFTP
+  # ============================================================
+    - name: Crear grup sftp-users
+      group:
+        name: sftp-users
+        state: present
+
+    - name: Assegurar SSSD actiu abans de crear directoris
+      systemd:
+        name: sssd
+        state: started
+        enabled: true
+
+    - name: Esperar que SSSD estigui llest
+      wait_for:
+        timeout: 5
+
+    - name: Crear directori home de cada usuari
+      file:
+        path: "/home/{{ item.name }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop: "{{ sftp_users }}"
+
+    - name: Crear subdirectori files per a cada usuari
+      file:
+        path: "/home/{{ item.name }}/files"
+        state: directory
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+        mode: '0700'
+      loop: "{{ sftp_users }}"
+
+    - name: Afegir usuaris al grup sftp-users
+      command: "usermod -aG sftp-users {{ item.name }}"
+      loop: "{{ sftp_users }}"
+      register: usermod_result
+      failed_when: usermod_result.rc != 0 and "does not exist" not in usermod_result.stderr
+      changed_when: usermod_result.rc == 0
+
+  # ============================================================
+  # BLOC 8 — NETEJAR CACHÉ SSSD
+  # ============================================================
+    - name: Netejar caché SSSD
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/sss/db
+        - /var/lib/sss/mc
+      notify: Reiniciar SSSD
+
+    - name: Recrear directoris caché SSSD
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: sssd
+        group: sssd
+        mode: '0700'
+      loop:
+        - /var/lib/sss/db
+        - /var/lib/sss/mc
+
+  # ============================================================
+  # BLOC 9 — ASSEGURAR SERVEIS ACTIUS
+  # ============================================================
+    - name: Assegurar Nginx actiu
+      systemd: { name: nginx, state: started, enabled: true }
+
+    - name: Assegurar PHP-FPM actiu
+      systemd: { name: php8.5-fpm, state: started, enabled: true }
+
+    - name: Assegurar SSSD actiu
+      systemd: { name: sssd, state: started, enabled: true }
+
+    - name: Assegurar SSH actiu
+      systemd: { name: ssh, state: started, enabled: true }
+
+  # ============================================================
+  # HANDLERS
+  # ============================================================
+  handlers:
+    - name: Reiniciar Nginx
+      systemd: { name: nginx, state: restarted }
+    - name: Reiniciar SSSD
+      systemd: { name: sssd, state: restarted }
+    - name: Reiniciar SSH
+      systemd: { name: ssh, state: restarted }
+```
+
+#### Verificació dels serveis un cop executat el playbook
+
+```bash
+# Verificar Nginx
+sudo systemctl status nginx
+# ● nginx.service - A high performance web server and a reverse proxy server
+#      Active: active (running) since Thu 2026-05-28 21:30:40 UTC
+
+# Verificar PHP-FPM
+sudo systemctl status php8.5-fpm
+# ● php8.5-fpm.service - The PHP 8.5 FastCGI Process Manager
+#      Active: active (running) since Thu 2026-05-28 18:27:38 UTC
+```
+
+> [!TIP]
+> **Idempotència del playbook:** Gràcies als mòduls `copy`, `lineinfile`, `file` i `systemd`, el playbook és **idempotent**: es pot executar múltiples vegades sense efectes secundaris. Les tasques ja aplicades apareixen com `ok` i les que requereixen canvis com `changed`. El resultat final (`ok=25 changed=6 failed=0`) confirma que tota la infraestructura web queda desplegada en un sol comando.
+
+---
+
 ## 🗺️ Apartat 6: Disseny del Model Relacional (16 Taules)
 
 L'esquema de la base de dades s'estructura de forma homogènia en **català**, consolidant un total de **16 taules** operatives. Aquestes taules estan dividides lògicament en diversos mòduls funcionals per facilitar-ne el manteniment i l'escalabilitat.
