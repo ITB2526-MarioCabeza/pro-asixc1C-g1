@@ -318,6 +318,310 @@ sftp emilia@localhost
 > [!TIP]
 > **Estructura del Chroot:** El directori arrel del chroot (`/home/%u`) ha de ser propietat de `root:root` i tenir permisos `755`. Si l'usuari fos propietari del seu propi home, el dimoni SSH rebutjaria la connexió amb un error de configuració insegura. El subdirectori `files` és on l'usuari té permisos d'escriptura reals.
 
+---
+
+<div align="center">
+  <h1>🔐 Servidor LDAP: OpenLDAP + slapd</h1>
+  <p><i>Instal·lació, configuració del directori, gestió d'usuaris i grups, i verificació de logs per a InnovateTech.</i></p>
+
+  ![OpenLDAP](https://img.shields.io/badge/OpenLDAP-003366?style=for-the-badge&logo=openldap&logoColor=white)
+  ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
+  ![AWS EC2](https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)
+  ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white)
+</div>
+
+---
+
+## 📖 Descripció de l'Apartat
+
+Aquest document descriu la configuració completa del servidor **OpenLDAP** (`slapd`) d'InnovateTech, desplegat sobre una instància **Amazon EC2** amb Ubuntu. Inclou l'eliminació d'una instal·lació prèvia defectuosa, la reinstal·lació neta, la creació de l'estructura del directori (`base.ldif`, `groups.ldif`, `users.ldif`), l'encriptació de contrasenyes i la verificació mitjançant logs del sistema.
+
+---
+
+# LDAP
+
+## 🗺️ Apartat 4: Configuració del Servidor OpenLDAP
+
+### 📋 Paràmetres del Servidor LDAP
+
+| Paràmetre | Valor |
+| :--- | :--- |
+| **Hostname** | `srv-ldap` |
+| **Usuari administrador** | `emilia` |
+| **IP del servidor LDAP** | `10.0.1.224` |
+| **Base DN** | `dc=innovatetech,dc=cat` |
+| **Admin DN** | `cn=admin,dc=innovatetech,dc=cat` |
+| **Contrasenya admin** | `Aneto_3404` |
+| **Domini DNS** | `innovatetech.cat` |
+| **Organització** | `Innovate Tech` |
+
+---
+
+### 🗑️ 4.1. Eliminació de la Instal·lació Prèvia
+
+Abans de fer una instal·lació neta, s'eliminen completament tots els fitxers i paquets de la instal·lació anterior defectuosa.
+
+```bash
+# Eliminar el directori de dades LDAP
+sudo rm -rf /var/lib/ldap
+
+# Eliminar el directori de configuració LDAP
+sudo rm -rf /etc/ldap
+
+# Desinstal·lar els paquets slapd i ldap-utils completament
+sudo apt-get purge -y slapd ldap-utils
+
+# Eliminar les dependències que ja no són necessàries
+sudo apt-get autoremove -y
+
+# Netejar la caché de paquets
+sudo apt-get autoclean
+```
+
+> [!TIP]
+> **Neteja completa:** L'ús de `purge` en comptes de `remove` garanteix que també s'eliminen els fitxers de configuració residuals del paquet, evitant conflictes en la reinstal·lació.
+
+---
+
+### 📦 4.2. Instal·lació d'OpenLDAP
+
+```bash
+# Instal·lar slapd (servidor LDAP) i les eines de línia de comandes
+sudo apt-get install -y slapd ldap-utils
+```
+
+#### Configuració interactiva de `slapd`
+
+Durant la instal·lació, l'assistent de configuració (`dpkg-reconfigure`) demana els paràmetres bàsics del directori. Si cal tornar a configurar-lo posteriorment:
+
+```bash
+sudo dpkg-reconfigure slapd
+```
+
+Els paràmetres introduïts durant l'assistent són:
+
+| Pregunta | Valor introduït |
+| :--- | :--- |
+| Omit OpenLDAP server configuration? | **No** |
+| DNS domain name | `innovatetech.cat` |
+| Organization name | `Innovate Tech` |
+| Administrator password | `Aneto_3404` |
+
+---
+
+### 🗂️ 4.3. Creació de l'Estructura del Directori (Fitxers LDIF)
+
+#### `base.ldif` — Unitats Organitzatives
+
+Es creen les dues unitats organitzatives principals del directori: `users` i `groups`.
+
+```bash
+cat base.ldif
+```
+
+```ldif
+dn: ou=users,dc=innovatetech,dc=cat
+objectClass: organizationalUnit
+ou: users
+
+dn: ou=groups,dc=innovatetech,dc=cat
+objectClass: organizationalUnit
+ou: groups
+```
+
+```bash
+# Importar les unitats organitzatives al directori
+ldapadd -x -D "cn=admin,dc=innovatetech,dc=cat" -W -f base.ldif
+# Enter LDAP Password:
+# adding new entry "ou=users,dc=innovatetech,dc=cat"
+# adding new entry "ou=groups,dc=innovatetech,dc=cat"
+```
+
+---
+
+#### `groups.ldif` — Grups POSIX
+
+```bash
+cat groups.ldif
+```
+
+```ldif
+dn: cn=brenda,ou=groups,dc=innovatetech,dc=cat
+objectClass: posixGroup
+cn: brenda
+gidNumber: 10001
+
+dn: cn=emilia,ou=groups,dc=innovatetech,dc=cat
+objectClass: posixGroup
+cn: emilia
+gidNumber: 10002
+
+dn: cn=laia,ou=groups,dc=innovatetech,dc=cat
+objectClass: posixGroup
+cn: laia
+gidNumber: 10003
+
+dn: cn=mario,ou=groups,dc=innovatetech,dc=cat
+objectClass: posixGroup
+cn: mario
+gidNumber: 10004
+```
+
+```bash
+# Importar els grups al directori
+ldapadd -x -D "cn=admin,dc=innovatetech,dc=cat" -W -f groups.ldif
+# Enter LDAP Password:
+# adding new entry "cn=brenda,ou=groups,dc=innovatetech,dc=cat"
+# adding new entry "cn=emilia,ou=groups,dc=innovatetech,dc=cat"
+# adding new entry "cn=laia,ou=groups,dc=innovatetech,dc=cat"
+# adding new entry "cn=mario,ou=groups,dc=innovatetech,dc=cat"
+```
+
+---
+
+#### 🔑 Encriptació de la Contrasenya
+
+Abans de crear els usuaris, es genera el hash SSHA de la contrasenya compartida (`Aneto_3404`):
+
+```bash
+slappasswd
+# New password:
+# Re-enter new password:
+# {SSHA}NBA6g6DGt+Hsh9rRTFODuxQiaR+8YIeU
+```
+
+---
+
+#### `users.ldif` — Usuaris POSIX
+
+```bash
+cat users.ldif
+```
+
+```ldif
+dn: uid=brenda,ou=users,dc=innovatetech,dc=cat
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: brenda
+sn: Brenda
+cn: Brenda
+uidNumber: 10001
+gidNumber: 10001
+homeDirectory: /home/brenda
+loginShell: /bin/bash
+userPassword: {SSHA}NBA6g6DGt+Hsh9rRTFODuxQiaR+8YIeU
+
+dn: uid=emilia,ou=users,dc=innovatetech,dc=cat
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: emilia
+sn: Emilia
+cn: Emilia
+uidNumber: 10002
+gidNumber: 10002
+homeDirectory: /home/emilia
+loginShell: /bin/bash
+userPassword: {SSHA}NBA6g6DGt+Hsh9rRTFODuxQiaR+8YIeU
+
+dn: uid=laia,ou=users,dc=innovatetech,dc=cat
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: laia
+sn: Laia
+cn: Laia
+uidNumber: 10003
+gidNumber: 10003
+homeDirectory: /home/laia
+loginShell: /bin/bash
+userPassword: {SSHA}NBA6g6DGt+Hsh9rRTFODuxQiaR+8YIeU
+
+dn: uid=mario,ou=users,dc=innovatetech,dc=cat
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: mario
+sn: Mario
+cn: Mario
+uidNumber: 10004
+gidNumber: 10004
+homeDirectory: /home/mario
+loginShell: /bin/bash
+userPassword: {SSHA}NBA6g6DGt+Hsh9rRTFODuxQiaR+8YIeU
+```
+
+```bash
+# Importar els usuaris al directori
+ldapadd -x -D "cn=admin,dc=innovatetech,dc=cat" -W -f users.ldif
+# Enter LDAP Password:
+# adding new entry "uid=brenda,ou=users,dc=innovatetech,dc=cat"
+# adding new entry "uid=emilia,ou=users,dc=innovatetech,dc=cat"
+# adding new entry "uid=laia,ou=users,dc=innovatetech,dc=cat"
+# adding new entry "uid=mario,ou=users,dc=innovatetech,dc=cat"
+```
+
+---
+
+### 🛡️ 4.4. Configuració de Privilegis Sudo (`/etc/sudoers`)
+
+Es concedeixen privilegis d'administració complets a l'usuari `emilia` per gestionar el servidor LDAP:
+
+```bash
+sudo visudo
+```
+
+```
+root        ALL=(ALL:ALL) ALL
+
+# Members of the admin group may gain root privileges
+%admin      ALL=(ALL) ALL
+
+# Allow members of group sudo to execute any command
+%sudo       ALL=(ALL:ALL) ALL
+
+@includedir /etc/sudoers.d
+emilia      ALL=(ALL) ALL
+```
+
+---
+
+### 📊 4.5. Verificació de Logs i Connectivitat
+
+#### Verificació del port LDAP (514/rsyslog)
+
+```bash
+# Comprovar que rsyslog escolta al port 514
+sudo ss -tulnp | grep 514
+# udp  UNCONN  0.0.0.0:514   0.0.0.0:*  users:(("rsyslogd",pid=755,fd=5))
+# tcp  LISTEN  0.0.0.0:514   0.0.0.0:*  users:(("rsyslogd",pid=755,fd=7))
+
+# Validar la configuració de rsyslog
+sudo rsyslogd -N1
+# rsyslogd: version 8.2512.0, config validation run (level 1), master config /etc/rsyslog.conf
+# rsyslogd: End of config validation run. Bye.
+```
+
+#### Prova d'enviament de log des del servidor LDAP
+
+```bash
+# Enviar un missatge de prova al sistema de logs
+logger "TEST_INNOVATE: Comunicacion de logs verificada con exito"
+```
+
+#### Verificació de la recepció del log
+
+```bash
+# Comprovar que el missatge ha arribat correctament al syslog
+sudo tail -n 20 /var/log/syslog | grep TEST_INNOVATE
+# 2026-05-27T20:11:37+00:00 srv-ldap emilia: TEST_INNOVATE: Comunicacion de logs verificada con exito
+```
+
+---
+
+> [!TIP]
+> **Ordre dels LDIF:** És important importar els fitxers en l'ordre correcte: primer `base.ldif` (crea les OU), després `groups.ldif` (crea els grups POSIX) i finalment `users.ldif` (crea els usuaris). Invertir l'ordre provocarà errors de referència perquè les entrades pare no existiran encara al directori.
 <div align="center">
   <h1>🌐 Màquina WEB: Servidor Nginx + SFTP</h1>
   <p><i>Configuració inicial, accés per clau pública/privada i desplegament del servei web per a InnovateTech.</i></p>
