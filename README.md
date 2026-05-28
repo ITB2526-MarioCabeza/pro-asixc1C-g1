@@ -40,15 +40,6 @@ L'objectiu principal és garantir una gestió de dades eficient, segura i altame
 
 ---
 
-## 👥 Equip de Desenvolupament (pro-asixc1C-g1)
-Aquest projecte ha estat desenvolupat i mantingut per:
-* **Laia Coca**
-* **Emilia Tikohonova**
-* **Brenda Castro**
-* **Mario Cabeza**
-
----
-
 ## 📖 Descripció de l'Apartat
 
 Aquest document descriu la configuració completa de la màquina web d'InnovateTech, desplegada sobre una instància **Amazon EC2** amb Ubuntu. Inclou la creació d'usuaris, la configuració d'accés segur mitjançant clau pública/privada RSA i la instal·lació i verificació del servidor web **Nginx**.
