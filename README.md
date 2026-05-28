@@ -1,14 +1,3 @@
-<div align="center">
-  <h1>📊 Projecte SGBD: Plataforma Avançada InnovateTech</h1>
-  <p><i>Infraestructura, bases de dades i automatització per a serveis de comunicació i streaming.</i></p>
-
-  ![MariaDB](https://img.shields.io/badge/MariaDB-003545?style=for-the-badge&logo=mariadb&logoColor=white)
-  ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
-  ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white)
-</div>
-
----
-
 ## 👥 Equip de Desenvolupament (pro-asixc1C-g1)
 Aquest projecte ha estat desenvolupat i mantingut per:
 * **Laia Coca**
@@ -527,7 +516,16 @@ sudo systemctl reload nginx
 > [!TIP]
 > **Verificació:** Accedint a `http://98.83.3.235` des del navegador, primer apareix la pàgina de benvinguda **"Welcome to nginx!"** i, després de modificar l'`index.html` i recarregar el servei, es mostra el contingut personalitzat correctament.
 
-# BASE DE DADES 
+<div align="center">
+  <h1>📊 Projecte SGBD: Plataforma Avançada InnovateTech</h1>
+  <p><i>Infraestructura, bases de dades i automatització per a serveis de comunicació i streaming.</i></p>
+
+  ![MariaDB](https://img.shields.io/badge/MariaDB-003545?style=for-the-badge&logo=mariadb&logoColor=white)
+  ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+  ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white)
+</div>
+
+---
 
 ## 🗺️ Apartat 1: Disseny del Model Relacional (16 Taules)
 
