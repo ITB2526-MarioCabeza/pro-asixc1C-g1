@@ -35,7 +35,7 @@ Aquest document descriu la configuració del servei **SFTP** sobre la màquina w
 
 # SFTP + LDAP
 
-## 🗺️ Apartat 3: Configuració SFTP amb Integració LDAP
+## 🗺️ Apartat 1: Configuració SFTP amb Integració LDAP
 
 ### 📋 Paquets Instal·lats
 
@@ -50,7 +50,7 @@ Aquest document descriu la configuració del servei **SFTP** sobre la màquina w
 
 ---
 
-### 🔧 3.1. Instal·lació dels Paquets Necessaris
+### 🔧 1.1. Instal·lació dels Paquets Necessaris
 
 ```bash
 # Actualitzar la llista de paquets
@@ -65,7 +65,7 @@ dpkg -l sssd sssd-ldap libpam-sss libnss-sss openssh-server
 
 ---
 
-### 🗂️ 3.2. Configuració del Fitxer SSSD (`/etc/sssd/sssd.conf`)
+### 🗂️ 1.2. Configuració del Fitxer SSSD (`/etc/sssd/sssd.conf`)
 
 El fitxer `sssd.conf` és el nucli de la integració LDAP. Defineix com el sistema resol els usuaris i grups contra el servidor LDAP d'InnovateTech.
 
@@ -145,7 +145,7 @@ grep -i sss /etc/pam.d/common-auth
 
 ---
 
-### 🔒 3.3. Configuració del Servidor SSH per a SFTP (`/etc/ssh/sshd_config`)
+### 🔒 1.3. Configuració del Servidor SSH per a SFTP (`/etc/ssh/sshd_config`)
 
 Es modifica la configuració del dimoni SSH per habilitar l'autenticació per contrasenya (necessària per als usuaris LDAP) i per restringir el grup `sftp-users` a accés exclusiu SFTP dins del seu directori personal (*chroot*).
 
@@ -174,7 +174,7 @@ Match Group sftp-users
 
 ---
 
-### 📂 3.4. Creació dels Directoris Personals i Assignació de Permisos
+### 📂 1.4. Creació dels Directoris Personals i Assignació de Permisos
 
 Per a cada membre de l'equip es crea un directori `files` dins del seu home, s'estableix `root:root` com a propietari del home (requisit del chroot SSH) i l'usuari com a propietari del subdirectori `files`.
 
@@ -237,7 +237,7 @@ ls -la /home/brenda/
 
 ---
 
-### ✅ 3.5. Verificació Final dels Serveis i Usuaris LDAP
+### ✅ 1.5. Verificació Final dels Serveis i Usuaris LDAP
 
 #### Estat dels serveis
 
@@ -340,7 +340,7 @@ Aquest document descriu la configuració completa del servidor **OpenLDAP** (`sl
 
 # LDAP
 
-## 🗺️ Apartat 4: Configuració del Servidor OpenLDAP
+## 🗺️ Apartat 2: Configuració del Servidor OpenLDAP
 
 ### 📋 Paràmetres del Servidor LDAP
 
@@ -357,7 +357,7 @@ Aquest document descriu la configuració completa del servidor **OpenLDAP** (`sl
 
 ---
 
-### 🗑️ 4.1. Eliminació de la Instal·lació Prèvia
+### 🗑️ 2.1. Eliminació de la Instal·lació Prèvia
 
 Abans de fer una instal·lació neta, s'eliminen completament tots els fitxers i paquets de la instal·lació anterior defectuosa.
 
@@ -383,7 +383,7 @@ sudo apt-get autoclean
 
 ---
 
-### 📦 4.2. Instal·lació d'OpenLDAP
+### 📦 2.2. Instal·lació d'OpenLDAP
 
 ```bash
 # Instal·lar slapd (servidor LDAP) i les eines de línia de comandes
@@ -409,7 +409,7 @@ Els paràmetres introduïts durant l'assistent són:
 
 ---
 
-### 🗂️ 4.3. Creació de l'Estructura del Directori (Fitxers LDIF)
+### 🗂️ 2.3. Creació de l'Estructura del Directori (Fitxers LDIF)
 
 #### `base.ldif` — Unitats Organitzatives
 
@@ -564,7 +564,7 @@ ldapadd -x -D "cn=admin,dc=innovatetech,dc=cat" -W -f users.ldif
 
 ---
 
-### 🛡️ 4.4. Configuració de Privilegis Sudo (`/etc/sudoers`)
+### 🛡️ 2.4. Configuració de Privilegis Sudo (`/etc/sudoers`)
 
 Es concedeixen privilegis d'administració complets a l'usuari `emilia` per gestionar el servidor LDAP:
 
@@ -587,7 +587,7 @@ emilia      ALL=(ALL) ALL
 
 ---
 
-### 📊 4.5. Verificació de Logs i Connectivitat
+### 📊 2.5. Verificació de Logs i Connectivitat
 
 #### Verificació del port LDAP (514/rsyslog)
 
@@ -642,7 +642,7 @@ Aquest document descriu la configuració completa de la màquina web d'InnovateT
 
 # MÀQUINA WEB
 
-## 🗺️ Apartat 2: Configuració de la Màquina Web
+## 🗺️ Apartat 3: Configuració de la Màquina Web
 
 ### 📋 Paràmetres de la Màquina
 
@@ -657,7 +657,7 @@ Aquest document descriu la configuració completa de la màquina web d'InnovateT
 
 ---
 
-### 🔧 2.1. Configuració Inicial
+### 🔧 3.1. Configuració Inicial
 
 #### Creació d'Usuari i Hostname
 
@@ -681,7 +681,7 @@ sudo hostnamectl set-hostname srv-web-ftps
 
 ---
 
-### 🔑 2.2. Configuració d'Accés per Clau Pública/Privada
+### 🔑 3.2. Configuració d'Accés per Clau Pública/Privada
 
 Per incrementar la seguretat, es desactiva l'accés per contrasenya i s'habilita l'autenticació mitjançant parell de claus RSA. D'aquesta manera es bloqueja qualsevol intent d'atac de força bruta.
 
@@ -754,7 +754,7 @@ ssh brenda@98.83.3.235
 
 ---
 
-### 🌍 2.3. Configuració del Servei Web (Nginx)
+### 🌍 3.3. Configuració del Servei Web (Nginx)
 
 #### Instal·lació d'Nginx
 
@@ -831,11 +831,11 @@ sudo systemctl reload nginx
 
 ---
 
-## 🗺️ Apartat 1: Disseny del Model Relacional (16 Taules)
+## 🗺️ Apartat 4: Disseny del Model Relacional (16 Taules)
 
 L'esquema de la base de dades s'estructura de forma homogènia en **català**, consolidant un total de **16 taules** operatives. Aquestes taules estan dividides lògicament en diversos mòduls funcionals per facilitar-ne el manteniment i l'escalabilitat.
 
-### 🏢 1.1. Gestió de Personal i Recursos Humans
+### 🏢 4.1. Gestió de Personal i Recursos Humans
 Aquest mòdul centralitza l'estructura organitzativa de l'empresa, les dades dels treballadors i la gestió financera de les nòmines.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
@@ -845,7 +845,7 @@ Aquest mòdul centralitza l'estructura organitzativa de l'empresa, les dades del
 | **`empleats`** | `dni` | `codi_dept`, `id_grup_nivell` | `nom`, `cognoms`, `adreca`, `telefon` |
 | **`nomines`** | `id_nomina` | `dni_empleat` | `mes`, `any`, `salari_base`, `deduccions`, `total_net` |
 
-### 💬 1.2. Sistema de Comunicació, Usuaris i QoS
+### 💬 4.2. Sistema de Comunicació, Usuaris i QoS
 Gestió dels usuaris de la plataforma (tant interns com externs) i registre de la qualitat de les trucades.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
@@ -854,21 +854,21 @@ Gestió dels usuaris de la plataforma (tant interns com externs) i registre de l
 | **`qualitats`** | `id_calitat` | - | `nom_perfil` (ENUM: 'alta', 'mitja', 'baixa'), `max_amplada_banda`, `ports_protocols` |
 | **`registre_trucades`**| `id_trucada` | `usuari_origen`, `usuari_desti`, `id_calitat_usada` | `data_hora_inici`, `data_hora_fi`, `durada_segons`, `puntuacio_valoracio` (CHECK), `comentari_valoracio` |
 
-### 🎬 1.3. Streaming i Catàleg de Continguts
+### 🎬 4.3. Streaming i Catàleg de Continguts
 Administració del repositori de vídeos i recursos multimèdia de la plataforma.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
 | **`cataleg_videos`** | `id_video` | - | `titol`, `descripcio`, `categoria`, `durada`, `data_publicacio`, `url_streaming` |
 
-### 📡 1.4. Operacions, Xarxa i Amplada de Banda
+### 📡 4.4. Operacions, Xarxa i Amplada de Banda
 Monitoratge tècnic del rendiment de la infraestructura per assegurar l'estabilitat del streaming.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
 | **`mesures_ampla_banda`**| `id_mesura` | `dni_operari` | `data_hora`, `equip_mesurat`, `velocitat_baixada` (DEC), `velocitat_pujada` (DEC), `latencia` (DEC), `resultat` (ENUM: 'acceptable', 'no acceptable'), `observacions` |
 
-### 🛒 1.5. Operacions Comercials i Vendes
+### 🛒 4.5. Operacions Comercials i Vendes
 Mòdul encarregat de la gestió de clients empresarials, estoc de productes i facturació.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
