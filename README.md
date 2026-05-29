@@ -2,46 +2,346 @@
  
 > Infraestructura CPD híbrida (física + AWS) amb serveis de directori, logs centralitzats, streaming multimèdia i base de dades per a la plataforma **InnovateTech**.
  
-**Curs:** 2025/2026 · **Grup:** ASIXc1C · **Equip:** pro-asixc1C-g1
+**Curs:** 2025/2026 · **Grup:** ASIXc1C · **Grup:** G01
  
 ---
- saffdasdf
+
 ## Equip de Desenvolupament
  
-| Membre | Rol principal |
-| :--- | :--- |
-| Laia Coca | Serveis d'àudio i vídeo |
-| Emilia Tikohonova | Servidor de logs (Rsyslog + ELK) |
-| Brenda Castro | Màquina web, SFTP i LDAP |
-| Mario Cabeza | Base de dades i automatització |
+| Membre | Rol principal                         |
+| :--- |:--------------------------------------|
+| Mario Cabeza | Base de dades i automatització        |
+| Brenda Castro | Màquina web i SFTP (ansible)          |
+| Laia Coca | Serveis d'àudio i vídeo, proposta CPD |
+| Emilia Tikohonova | Servidor de logs (ansible), LDAP      |
+
+
  
 ---
  
 ## Índex
+
+
+1. [Proposta de CPD](#1-proposta-de-cpd)
+   - 1.1 [Regulacions, estàndards i certificacions](#11-regulacions-estàndards-i-certificacions-)
+   - 1.1 [Ubicació física](#11-ubicació-física-)
+     - 1.1.1 [Situació física de la sala a l'edifici](#111-situació-física-de-la-sala-a-ledifici)
+     - 1.1.2 [Sistemes de climatització](#112-sistemes-de-climatització)
+     - 1.1.3 [Mesures per dificultar la identificació de la sala](#113-mesures-per-dificultar-la-identificació-de-la-sala)
+     - 1.1.4 [Dimensions i distribució de la sala](#114-dimensions-i-distribució-de-la-sala)
+     - 1.1.5 [Terra tècnic i sostre tècnic](#115-terra-tècnic-i-sostre-tècnic)
+     - 1.1.6 [Planells, dibuixos, diagrames dels elements anteriorment citats](#116-planells-dibuixos-diagrames-dels-elements-anteriorment-citats)
+     - 1.1.7 [Estructuració dels racks](#117-estructuració-dels-racks)
+   - 1.2 [Infraestructura IT](#12-infraestructura-it-)
+     - 1.2.1 [Servidors](#121-servidors)
+     - 1.2.2 [Patch panels](#122-patch-panels)
+     - 1.2.3 [Switches](#123-switches)
+     - 1.2.4 [Planells / diagrames distribució racks](#124-planells--diagrames-distribució-racks)
+   - 1.3 [Infraestructura elèctrica](#13-infraestructura-elèctrica-)
+     - 1.3.1 [Sistemes d'alimentació redundant](#131-sistemes-dalimentació-redundant)
+     - 1.3.2 [SAIs](#132-sais)
+   - 1.4 [Seguretat Física i Lògica](#14-seguretat-física-i-lògica-)
+     - 1.4.1 [Seguretat Física](#141-seguretat-física)
+     - 1.4.2 [Seguretat Lògica](#142-seguretat-lògica)
+     - 1.4.3 [Prevenció de riscos laborals](#143-prevenció-de-riscos-laborals)
+   - 1.5 [Implementació del CPD al núvol AWS](#15-implementació-del-cpd-al-núvol-aws-)
+     - 1.5.1 [Arquitectura AWS](#151-arquitectura-aws)
+     - 1.5.2 [SRV web / sftp (ansible)](#152-srv-web--sftp-ansible)
+       - 1.5.2.1 [Servei web](#1521-servei-web)
+       - 1.5.2.3 [SFTP](#1523-sftp)
+     - 1.5.3 [SRV Logs](#153-srv-logs)
+     - 1.5.4 [SRV LDAP](#154-srv-ldap)
+     - 1.5.5 [Ansible](#155-ansible)
+       - 1.5.5.1 [SRV web / sftp](#1551-srv-web--sftp)
+       - 1.5.5.2 [SRV Logs](#1552-srv-logs)
+     - 1.5.6 [Accés mitjançant clau privada / pública](#156-accés-mitjançant-clau-privada--pública)
+2. [Implantació dels serveis d'àudio i vídeo](#2-implantació-dels-serveis-dàudio-i-vídeo)
+   - 2.1 [Descripció general](#21-descripció-general)
+   - 2.2 [Servei d'àudio](#22-servei-dàudio-)
+     - 2.2.1 [Funcionalitat](#221-funcionalitat)
+     - 2.2.2 [Instal·lació](#222-installació)
+     - 2.2.3 [Validació del servei](#223-validació-del-servei)
+   - 2.3 [Servei de vídeo](#23-servei-de-vídeo-)
+     - 2.3.1 [Funcionalitat](#231-funcionalitat)
+     - 2.3.2 [Instal·lació](#232-installació)
+     - 2.3.3 [Validació del servei](#233-validació-del-servei)
+   - 2.4 [Servei de videoconferència](#24-servei-de-videoconferència-)
+     - 2.4.1 [Protocols de videoconferència](#241-protocols-de-videoconferència)
+     - 2.4.2 [Funcionalitat](#242-funcionalitat)
+     - 2.4.3 [Instal·lació](#243-installació)
+     - 2.4.4 [Validació del servei](#244-validació-del-servei)
+   - 2.5 [Comprovacions d'amplada de banda](#25-comprovacions-damplada-de-banda-)
+     - 2.5.1 [Rendiment de xarxa](#251-rendiment-de-xarxa)
+     - 2.5.2 [Anàlisi de comportament amb el consum dels serveis multimèdia](#252-anàlisi-de-comportament-amb-el-consum-dels-serveis-multimèdia)
+     - 2.5.3 [Anàlisi de comportament amb múltiples serveis actius](#253-anàlisi-de-comportament-amb-múltiples-serveis-actius)
+     - 2.5.4 [La infraestructura és suficient?](#254-la-infraestructura-és-suficient)
+     - 2.5.5 [Proposta de millores](#255-proposta-de-millores)
+3. [Disseny i implementació d'una base de dades](#3-disseny-i-implementació-duna-base-de-dades)
+   - 3.1 [Definició de rols](#31-definició-de-rols)
+   - 3.2 [Script de creació automatitzada d'usuaris](#32-script-de-creació-automatitzada-dusuaris)
+   - 3.3 [Triggers per al control d'accés i auditoria](#33-triggers-per-al-control-daccés-i-auditoria)
+   - 3.4 [Events Periòdics](#34-events-periòdics)
+   - 3.5 [Disseny Entitat-Relació i Model Relacional](#35-disseny-entitat-relació-i-model-relacional-)
+     - 3.5.1 [Diagrama E/R](#351-diagrama-er)
+     - 3.5.2 [Esquema relacional](#352-esquema-relacional)
+     - 3.5.3 [Implementació en el SGBD](#353-implementació-en-el-sgbd)
+---
  
-1. [Descripció del Projecte](#1-descripció-del-projecte)
-2. [Arquitectura General AWS](#2-arquitectura-general-aws)
-   - 2.1 [Prerequisit Global: Accés i Administració de Màquines](#21-prerequisit-global-accés-i-administració-de-màquines)
+
+## 1. Proposta de CPD [⬆](#índex)
+
+La nostra proposta per al CPD d’Innovate Tech es tracta d’un disseny preparat per a allotjar diferents tipus de serveis de mannera segura tan fisica com logicament, i sostenible. Els punts els quals em tractat de prioritzar alhore de fer el disseny han sigut els seguents:
+- Redundància i tolerància a fallades
+- Eficiència energètica
+- Facilitat de manteniment
+- Seguretat física i lògica
+- Possibilitat de creixement futur
+
+
+
+### 1.1 Regulacions, estàndards i certificacions [⬆](#índex)
+
+Pel disseny de la distribució i seguretat cpd, ens hem basat en les següents regulacions i estàndards, tant d’espanya com d’arreu del món:
+
+- Redundància:
+  - Nivells de classificació de fiabilitat de CPD Tier (Uptime Institute)
+- Seguretat física (incendis):
+  - NFPA 13 → Sistemes de ruixadors 
+  -  NFPA 17 → Sistemes d'extinció de productes químics en sec
+  - NFPA 220 → Construcció no combustible
+- Disseny
+  - ANSI/TIA-942
+  - DIN EN 50600 
+
+Els Tiers, són un sistema de classificació que defineix la disponibilitat i fiabilitat d’un CPD a Espanya. 
+
+En el nostre cas, el CPD proposat és dissenyat per entrar al segon tier més redundant, el Tier III. 
+
+La raó principal per escollir aquest tier i no el més òptim, és que la diferència amb el Tier III i Tier IV no és tan notòria en comparació amb els costos que suposaria per a l’empresa. A més, considerem que el Tier IV de moment no és adequat per a la nostra instal·lació per la poca quantitat
+
+Encara i així, al ser una empresa dedicada a la provisió de serveis a tercers, tampoc podem permetre temps d’inactivitat. El tier escollit (III), compta amb una disponibilitat de 99.982%, temps d’inactivitat per any de només de 1.6 hores i redundància N+1 mitjancant SAIs, 1 generador en standby y un ATS, permetent realitzar manteniment sense interrompre el servei .
+
+
+ 
+### 1.2 Ubicació física [⬆](#índex)
+ 
+#### 1.2.1 Situació física de la sala a l'edifici
+
+La sala del CPD està ubicada a la segona planta de l’edifici i complit les següents mesures de seguretat:
+
+- Distanciada de fonts de radiacions electromagnètiques i de radiofreqüència
+- Situada per sobre del nivell de possibles inundacions
+- Sense instal·lacions de fontaneria a la planta superior
+- Sala sense finestres per reduir riscos externs  
+- Accés limitat únicament a personal autoritzat
+
+ 
+#### 1.1.2 Sistemes de climatització
+El CPD utilitza una arquitectura de passadís fred i passadís calent per millorar l’eficiència energètica i optimitzar la refrigeració dels equips.
+
+Els dos racks principals es col·loquen paral·lelament deixant un passadís central destinat exclusivament a l’expulsió d’aire calent (passadís calent). 
+
+L’aire calent expulsat pels servidors és capturat al passadís central i evacuat mitjançant conductes de ventilació connectats al sistema de climatització.
+
+L’aire fred és distribuït per la part exterior dels racks mitjançant el terra tècnic i impulsat cap a la part frontal dels servidors. Addicionalment, el sostre tècnic permet la circulació i retorn de l’aire cap als sistemes de climatització.
+
+Condicions ambientals:
+- Temperatura entre 22 °C i 24 °C
+- Humitat relativa entre 40% i 60%
+
+La humitat és controlada mitjançant sensors ambientals i funcions automàtiques de deshumidificació integrades al sistema de climatització.
+
+ 
+#### 1.1.3 Mesures per dificultar la identificació de la sala
+Per augmentar la seguretat física del CPD:
+- La sala no disposa de senyalització visible
+- Accés restringit amb targeta identificativa
+- Porta reforçada amb pany electrònic
+- Sistema de videovigilància permanent
+- Registre d’accessos
+ 
+#### 1.1.4 Dimensions i distribució de la sala
+- Separació física entre cablejat de dades i alimentació
+- Etiquetatge de tots els cables
+- Ús de patch panels
+- Canalitzacions específiques per xarxa i energia
+- Organització vertical i horitzontal del cablejat
+
+ 
+#### 1.1.5 Terra tècnic i sostre tècnic
+
+El CPD disposarà de terra tècnic elevat per permetre la distribució de l’aire refrigerat, el pas del cablejat elèctric i de xarxa.
+
+El sostre tècnic permet la instal·lació de sensors ambientals, il·luminació, canalitzacions auxiliars i conductes d’extracció d’aire calent. 
+
+ 
+#### 1.1.6 Planells, dibuixos, diagrames dels elements anteriorment citats
+
+Plànol de distribució del CPD:
+
+Esquema de distribució dels racks:
+![1.2.6-2.jpg](IMG/1/1.2.6-2.jpg)
+
+Diagrama del flux elèctric:
+
+![1.2.6-3.jpg](IMG/1/1.2.6-3.jpg)
+
+#### 1.1.7 Estructuració dels racks
+La sala ha estat dimensionada per allotjar tant la infraestructura actual com possibles ampliacions futures. 
+
+Característiques generals 
+- Alçada: 2,5 m
+- Superfície del CPD: 5 x 5,7 m (28,5 m²)
+- Superfície total amb sala del generador: 5 x 8 m (40 m²)
+
+Distribució 
+- 1 fila amb 2 racks principals
+- Espai reservat per a 2 racks addicionals
+- Espai suficient per pas i manteniment
+- Sala independent per al generador
+
+Elements addicionals
+- ATS situat a prop dels racks
+- 2 reixetes de ventilació per la sala del generador
+
+ 
+### 1.2 Infraestructura IT [⬆](#índex)
+Abans de decidir la mida i distribució del cpd, s’ha de numerar la quantitat de servidors, switches i patch panels que Innovate Tech necessita, per estructurar correctament els racks  i després ja poder decidir la col·locació d’aquests a la sala i estimar l’espai que ocuparan a aquesta.
+ 
+#### 1.2.1 Servidors
+Per a la infraestructura de servidors s’han seleccionat servidors rack 2U tipus Dell PowerEdge R740, adequats per entorns virtualitzats i serveis empresarials gràcies a la seva redundància d’alimentació, capacitat d’expansió i compatibilitat amb entorns d’alta disponibilitat. 
+![1.3.1-1.png](IMG/1/1.3.1-1.png)
+En total, la empresa disposa de 7 servidors:
+- Servidor LDAP
+- Servidor de BDD
+- Servidor de centralització de logs
+- Servidor web / sftp
+- Servidor d’àudio
+- Servidor de vídeo
+- Servidor de videoconferència
+
+
+ 
+#### 1.2.2 Patch panels
+ 
+#### 1.2.3 Switches
+ 
+#### 1.2.4 Planells / diagrames distribució racks
+ 
+### 1.3 Infraestructura elèctrica [⬆](#índex)
+ 
+#### 1.3.1 Sistemes d'alimentació redundant
+ 
+#### 1.3.2 SAIs
+ 
+### 1.4 Seguretat Física i Lògica [⬆](#índex)
+ 
+#### 1.4.1 Seguretat Física
+ 
+#### 1.4.2 Seguretat Lògica
+ 
+#### 1.4.3 Prevenció de riscos laborals
+ 
+### 1.5 Implementació del CPD al núvol AWS [⬆](#índex)
+ 
+#### 1.5.1 Arquitectura AWS
+ 
+#### 1.5.2 SRV web / sftp (ansible)
+ 
+##### 1.5.2.1 Servei web
+ 
+##### 1.5.2.3 SFTP
+ 
+#### 1.5.3 SRV Logs
+ 
+#### 1.5.4 SRV LDAP
+ 
+#### 1.5.5 Ansible
+ 
+##### 1.5.5.1 SRV web / sftp
+ 
+##### 1.5.5.2 SRV Logs
+ 
+#### 1.5.6 Accés mitjançant clau privada / pública
+ 
+---
+ 
+## 2. Implantació dels serveis d'àudio i vídeo [⬆](#índex)
+ 
+### 2.1 Descripció general [⬆](#índex)
+ 
+### 2.2 Servei d'àudio [⬆](#índex)
+ 
+#### 2.2.1 Funcionalitat
+ 
+#### 2.2.2 Instal·lació
+ 
+#### 2.2.3 Validació del servei
+ 
+### 2.3 Servei de vídeo [⬆](#índex)
+ 
+#### 2.3.1 Funcionalitat
+ 
+#### 2.3.2 Instal·lació
+ 
+#### 2.3.3 Validació del servei
+ 
+### 2.4 Servei de videoconferència [⬆](#índex)
+ 
+#### 2.4.1 Protocols de videoconferència
+ 
+#### 2.4.2 Funcionalitat
+ 
+#### 2.4.3 Instal·lació
+ 
+#### 2.4.4 Validació del servei
+ 
+### 2.5 Comprovacions d'amplada de banda [⬆](#índex)
+ 
+#### 2.5.1 Rendiment de xarxa
+ 
+#### 2.5.2 Anàlisi de comportament amb el consum dels serveis multimèdia
+ 
+#### 2.5.3 Anàlisi de comportament amb múltiples serveis actius
+ 
+#### 2.5.4 La infraestructura és suficient?
+ 
+#### 2.5.5 Proposta de millores
+ 
+---
+ 
+## 3. Disseny i implementació d'una base de dades [⬆](#índex)
+ 
+### 3.1 Definició de rols [⬆](#índex)
+ 
+### 3.2 Script de creació automatitzada d'usuaris [⬆](#índex)
+ 
+### 3.3 Triggers per al control d'accés i auditoria [⬆](#índex)
+ 
+### 3.4 Events Periòdics [⬆](#índex)
+ 
+### 3.5 Disseny Entitat-Relació i Model Relacional [⬆](#índex)
+ 
+#### 3.5.1 Diagrama E/R
+ 
+#### 3.5.2 Esquema relacional
+ 
+#### 3.5.3 Implementació en el SGBD
+
+
+
+
+
+2. [Arquitectura General AWS](#2-arquitectura-general-aws)  
+   2.1 [Prerequisit Global: Accés i Administració de Màquines](#21-prerequisit-global-accés-i-administració-de-màquines)
 3. [Servidor LDAP (OpenLDAP)](#3-servidor-ldap-openldap)
 4. [Màquina Web: Nginx + SFTP](#4-màquina-web-nginx--sftp)
 5. [Servidor de Logs: Rsyslog + ELK Stack](#5-servidor-de-logs-rsyslog--elk-stack)
 6. [Base de Dades (MariaDB)](#6-base-de-dades-mariadb)
 ---
  
-## 1. Descripció del Projecte
- 
-**InnovateTech** és una empresa de provisió de serveis tecnològics que requereix modernitzar la seva capacitat operativa. Aquest projecte dissenya i implanta la infraestructura tecnològica completa: des de la proposta de CPD físic fins al desplegament al núvol AWS, incloent-hi serveis multimèdia, directori d'usuaris, centralització de logs i una base de dades integral.
- 
-L'arquitectura resultant cobreix:
- 
-- Disseny físic del CPD (ubicació, racks, SAI, seguretat física i lògica).
-- Desplegament al núvol AWS amb serveis de directori actiu (LDAP), web, SFTP i logs centralitzats.
-- Infraestructura de streaming d'àudio i vídeo, i servei de videoconferència.
-- Base de dades relacional amb control d'accés per rols, triggers d'auditoria i còpies de seguretat automatitzades.
-- Documentació en Markdown publicada a GitHub i automatització amb Ansible.
----
- 
-## 2. Arquitectura General AWS
+
+## 2. Arquitectura General AWS [⬆](#índex)
  
 La infraestructura de producció s'ha desplegat íntegrament a **Amazon EC2** (sense RDS ni AMIs del marketplace), seguint el principi de màxim control sobre el sistema operatiu i la configuració.
  
