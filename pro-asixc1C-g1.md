@@ -1632,10 +1632,142 @@ Sí, pensem que la infraestructura és suficient per cobrir les necessitats actu
  
 # 3. Disseny i implementació d'una base de dades [⬆](#índex)
 
+## 3.1 Definició de rols
+
+S'han creat **4 rols** a MariaDB amb permisos diferenciats segons la funció de cada perfil dins de la plataforma InnovateTech:
+
+| Rol | Taules accessibles | Permisos |
+| :--- | :--- | :--- |
+| `rol_admin` | Totes (`*.*`) | `ALL PRIVILEGES` + `GRANT OPTION` + `FILE` |
+| `rol_administracio` | `departaments`, `grups_nivells`, `empleats`, `nomines`, `registre_trucades` | `SELECT`, `INSERT`, `UPDATE` |
+| `rol_treballador` | `productes`, `cataleg_videos`, `registre_trucades`, `qualitats` | `SELECT`, `INSERT`, `UPDATE` |
+| `rol_vendes` | `comandes`, `clients`, `registre_trucades`, `productes`, `cistell` | `SELECT`, `INSERT`, `UPDATE` |
+
+#### Verificació dels rols creats
+
+```sql
+-- Verificar permisos de cada rol
+SHOW GRANTS FOR 'rol_administracio';
+SHOW GRANTS FOR 'rol_treballador';
+SHOW GRANTS FOR 'rol_admin';
+SHOW GRANTS FOR 'rol_vendes';
+
+-- Llistar tots els rols del sistema
+SELECT User FROM mysql.user WHERE is_role = 'Y';
+-- rol_admin
+-- rol_vendes
+-- rol_administracio
+-- rol_treballador
+```
+
+![Rols i Permisos](IMG/3/3.2.png)
+
+---
+
+## 3.2 Script de creació automatitzada d'usuaris
+
+S'ha creat un script Bash (`fer_backup.sh`) que automatitza les còpies de seguretat periòdiques de la base de dades. L'script s'executa automàticament cada dia a les **23:00h** mitjançant `cron`.
+
+#### Script `fer_backup.sh`
+
+```bash
+#!/bin/bash
+
+# Configuración de rutas y archivos
+BACKUP_DIR="/home/mario.cabeza.7e9/backups"
+FECHA=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/backup_vendes_$FECHA.sql"
+
+# Crear el directorio de copias de seguridad si no existe
+mkdir -p $BACKUP_DIR
+
+echo "============================================="
+echo "🚀 INICIANT CÒPIA DE SEGURETAT PERIÒDICA (23:00h)"
+echo "============================================="
+
+# Ejecutar mysqldump extrayendo SÓLO las tablas requeridas
+sudo mysqldump innovatetech_db clients productes comandes cistell > $BACKUP_FILE
+
+# Comprobar si el comando anterior se ejecutó correctamente
+if [ $? -eq 0 ]; then
+    echo "✅ Còpia de seguretat realitzada amb èxit."
+    sudo mysql -u root innovatetech_db -e "INSERT INTO registre_backups \
+      (taules_incloses, resultat) VALUES \
+      ('clients, productes, comandes, cistell', 'OK');"
+    echo "📁 Fitxer guardat a: $BACKUP_FILE"
+    # Opcional: Cambiar el propietario para que tu usuario pueda gestionarlo sin sudo
+    sudo chown mario.cabeza.7e9:mario.cabeza.7e9 $BACKUP_FILE
+else
+    echo "❌ ERROR: No s'ha pogut realitzar la còpia de seguretat."
+    exit 1
+fi
+```
+
+![Script de Creació Backup](IMG/3/3.3.png)
+
+> **Motiu de la franja horària:** S'escull les 23:00h perquè coincideix amb el moment de menor activitat transaccional de l'empresa, garantint que el `mysqldump` no bloquegi les taules crítiques durant l'operativa diària.
+
+---
+
+## 3.3 Triggers per al control d'accés i auditoria
+
+> *(Veure fitxers SQL del repositori per al codi complet dels triggers d'auditoria sobre les taules crítiques.)*
+
+---
+
+## 3.4 Events Periòdics
+
+S'ha configurat l'**Event Scheduler** de MariaDB per executar automàticament les còpies de seguretat de forma periòdica sense intervenció manual.
+
+#### Activació de l'Event Scheduler
+
+```sql
+-- Verificar que l'event scheduler està actiu
+SHOW VARIABLES LIKE 'event_scheduler';
+-- event_scheduler | ON
+```
+
+#### Events automàtics creats
+
+```sql
+-- Llistar tots els events programats
+SHOW EVENTS;
+```
+
+| Db | Nom | Interval | Inici | Estat |
+| :--- | :--- | :--- | :--- | :--- |
+| `innovatetech_db` | `backup_diari_innovatetech` | `1 DAY` | `2026-05-28 21:38:11` | `ENABLED` |
+
+#### Historial de backups realitzats
+
+```sql
+SELECT * FROM registre_backups ORDER BY data_hora DESC;
+```
+
+| id\_backup | data\_hora | taules\_incloses | resultat |
+| :--- | :--- | :--- | :--- |
+| 2 | 2026-05-28 21:38:11 | empleats, clients, comandes, registre\_trucades | OK |
+| 1 | 2026-05-21 07:33:14 | clients, productes, comandes, cistell | OK |
+
+![Còpies de Seguretat i Events](IMG/3/3.4.png)
+
+---
+
 ## 3.5 Disseny Entitat-Relació i Model Relacional [⬆](#índex)
 
-1. Gestió de Personal i Recursos Humans
-Aquest mòdul centralitza l'estructura organitzativa de l'empresa, les dades dels treballadors i la gestió financera de les nòmines.
+### 3.5.1 Diagrama E/R
+
+**Diagrama Entitat-Relació (Model Físic):**
+
+![Diagrama ER InnovateTech](IMG/3/PROYECTO_TRANSVERSAL.png)
+
+---
+
+### 3.5.2 Esquema relacional
+
+L'esquema de la base de dades s'estructura en **català**, consolidant un total de **16 taules** operatives dividides en 6 mòduls funcionals:
+
+**1. Gestió de Personal i Recursos Humans**
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1644,41 +1776,36 @@ Aquest mòdul centralitza l'estructura organitzativa de l'empresa, les dades del
 | **`empleats`** | `dni` | `codi_dept`, `id_grup_nivell` | `nom`, `cognoms`, `adreca`, `telefon` |
 | **`nomines`** | `id_nomina` | `dni_empleat` | `mes`, `any`, `salari_base`, `deduccions`, `total_net` |
 
-2. Sistema de Comunicació, Usuaris i QoS
-Gestió dels usuaris de la plataforma (tant interns com externs) i registre de la qualitat de les trucades.
+**2. Sistema de Comunicació, Usuaris i QoS**
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
-| **`usuaris_sistema`** | `id_usuari` | `dni_empleat` *(Buit per a clients)* | `nom_complet`, `email` (UNIQUE), `extensio_trucades` (UNIQUE), `rol` (ENUM: 'client', 'treballador'), `estat` (ENUM: 'actiu', 'bloquejat'), `enllaç_videotrucada` |
-| **`qualitats`** | `id_calitat` | - | `nom_perfil` (ENUM: 'alta', 'mitja', 'baixa'), `max_amplada_banda`, `ports_protocols` |
-| **`registre_trucades`**| `id_trucada` | `usuari_origen`, `usuari_desti`, `id_calitat_usada` | `data_hora_inici`, `data_hora_fi`, `durada_segons`, `puntuacio_valoracio` (CHECK), `comentari_valoracio` |
+| **`usuaris_sistema`** | `id_usuari` | `dni_empleat` | `nom_complet`, `email` (UNIQUE), `extensio_trucades` (UNIQUE), `rol` (ENUM), `estat` (ENUM), `enllaç_videotrucada` |
+| **`qualitats`** | `id_calitat` | - | `nom_perfil` (ENUM: 'alta','mitja','baixa'), `max_amplada_banda`, `ports_protocols` |
+| **`registre_trucades`** | `id_trucada` | `usuari_origen`, `usuari_desti`, `id_calitat_usada` | `data_hora_inici`, `data_hora_fi`, `durada_segons`, `puntuacio_valoracio` (CHECK), `comentari_valoracio` |
 
-3. Streaming i Catàleg de Continguts
-Administració del repositori de vídeos i recursos multimèdia de la plataforma.
+**3. Streaming i Catàleg de Continguts**
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
 | **`cataleg_videos`** | `id_video` | - | `titol`, `descripcio`, `categoria`, `durada`, `data_publicacio`, `url_streaming` |
 
-4. Operacions, Xarxa i Amplada de Banda
-Monitoratge tècnic del rendiment de la infraestructura per assegurar l'estabilitat del streaming.
+**4. Operacions, Xarxa i Amplada de Banda**
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
-| **`mesures_ampla_banda`**| `id_mesura` | `dni_operari` | `data_hora`, `equip_mesurat`, `velocitat_baixada` (DEC), `velocitat_pujada` (DEC), `latencia` (DEC), `resultat` (ENUM: 'acceptable', 'no acceptable'), `observacions` |
+| **`mesures_ampla_banda`** | `id_mesura` | `dni_operari` | `data_hora`, `equip_mesurat`, `velocitat_baixada` (DEC), `velocitat_pujada` (DEC), `latencia` (DEC), `resultat` (ENUM), `observacions` |
 
-5. Operacions Comercials i Vendes
-Mòdul encarregat de la gestió de clients empresarials, estoc de productes i facturació.
+**5. Operacions Comercials i Vendes**
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
 | **`clients`** | `id_client` | - | `nom_empresa`, `cif`, `telefon_contacte` |
 | **`productes`** | `id_producte` | - | `nom_producte`, `preu` (DECIMAL), `estoc` |
 | **`comandes`** | `id_comanda` | `id_client` | `data_comanda`, `estat_pagament` |
-| **`cistell`** | `id_cistell` | `id_client`, `id_producte`| `quantitat` |
+| **`cistell`** | `id_cistell` | `id_client`, `id_producte` | `quantitat` |
 
-6. Seguretat, Auditories i Respatller (Mòdul 0377)
-Garanteix la traçabilitat de les operacions i l'estat de les còpies de seguretat del SGBD.
+**6. Seguretat, Auditories i Respatller**
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1686,24 +1813,41 @@ Garanteix la traçabilitat de les operacions i l'estat de les còpies de seguret
 | **`registre_backups`** | `id_backup` | - | `data_hora`, `taules_incloses`, `resultat` |
 | **`logs_auditorias`** | `id_log` | - | `usuari_sistema`, `accio_realitzada`, `detalls`, `data_hora` |
 
+---
 
- 
-### 3.5.1 Diagrama E/R
- 
-**Diagrama Entitat-Relació (Model Físic):**
-
-![PROYECTO_TRANSVERSAL.png](IMG/3/PROYECTO_TRANSVERSAL.png)
-
-
- 
 ### 3.5.3 Implementació en el SGBD
 
-Validació de la implementació de la bdd "innovatetech_db" al server.
+#### Model relacional: 16 taules creades
 
-![3-1.png](IMG/3/3-1.png)
+```sql
+SHOW TABLES;
+-- 16 rows in set (0.001 sec)
+```
 
-![3.2.png](IMG/3/3.2.png)
+![Model Relacional 16 Taules](IMG/3/3-1.png)
 
-![3.3.png](IMG/3/3.3.png)
+#### Rols i permisos verificats
 
-![3.4.png](IMG/3/3.4.png)
+![Rols i Permisos](IMG/3/3.2.png)
+
+#### Script de backup i còpies de seguretat
+
+![Script Backup](IMG/3/3.3.png)
+
+#### Events automàtics i historial de backups
+
+![Còpies de Seguretat](IMG/3/3.4.png)
+
+#### Evidència d'implementació i integritat del sistema
+
+```sql
+SELECT COUNT(*) AS Taules, CURRENT_TIMESTAMP AS 'Hora de la Defensa'
+FROM information_schema.tables
+WHERE table_schema = 'innovatetech_db';
+-- 16 taules | 2026-05-28 22:24:00
+```
+
+![Implementació del Sistema](IMG/3/3.5.png)
+
+> [!TIP]
+> **Evidència final:** La consulta `SELECT COUNT(*)` sobre `information_schema.tables` confirma que les **16 taules** del model relacional estan correctament implementades al servidor de producció `srv-bbdd` en el moment de la defensa (`2026-05-28 22:24:00`).
