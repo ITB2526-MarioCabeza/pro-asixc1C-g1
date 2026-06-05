@@ -1630,6 +1630,8 @@ Sí, pensem que la infraestructura és suficient per cobrir les necessitats actu
  
 ---
 
+<a id="3-disseny-i-implementació-duna-base-de-dades"></a>
+
 # 3. Disseny i implementació d'una base de dades [⬆](#índex)
 
 ## 3.1 Definició de rols
