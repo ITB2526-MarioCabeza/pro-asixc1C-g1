@@ -1643,23 +1643,6 @@ S'han creat **4 rols** a MariaDB amb permisos diferenciats segons la funció de 
 | `rol_treballador` | `productes`, `cataleg_videos`, `registre_trucades`, `qualitats` | `SELECT`, `INSERT`, `UPDATE` |
 | `rol_vendes` | `comandes`, `clients`, `registre_trucades`, `productes`, `cistell` | `SELECT`, `INSERT`, `UPDATE` |
 
-#### Verificació dels rols creats
-
-```sql
--- Verificar permisos de cada rol
-SHOW GRANTS FOR 'rol_administracio';
-SHOW GRANTS FOR 'rol_treballador';
-SHOW GRANTS FOR 'rol_admin';
-SHOW GRANTS FOR 'rol_vendes';
-
--- Llistar tots els rols del sistema
-SELECT User FROM mysql.user WHERE is_role = 'Y';
--- rol_admin
--- rol_vendes
--- rol_administracio
--- rol_treballador
-```
-
 ![Rols i Permisos](IMG/3/3.2.png)
 
 ---
@@ -1668,34 +1651,25 @@ SELECT User FROM mysql.user WHERE is_role = 'Y';
 
 S'ha creat un script Bash (`fer_backup.sh`) que automatitza les còpies de seguretat periòdiques de la base de dades. L'script s'executa automàticament cada dia a les **23:00h** mitjançant `cron`.
 
-#### Script `fer_backup.sh`
-
 ```bash
 #!/bin/bash
 
-# Configuración de rutas y archivos
 BACKUP_DIR="/home/mario.cabeza.7e9/backups"
 FECHA=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/backup_vendes_$FECHA.sql"
 
-# Crear el directorio de copias de seguridad si no existe
 mkdir -p $BACKUP_DIR
 
-echo "============================================="
 echo "🚀 INICIANT CÒPIA DE SEGURETAT PERIÒDICA (23:00h)"
-echo "============================================="
 
-# Ejecutar mysqldump extrayendo SÓLO las tablas requeridas
 sudo mysqldump innovatetech_db clients productes comandes cistell > $BACKUP_FILE
 
-# Comprobar si el comando anterior se ejecutó correctamente
 if [ $? -eq 0 ]; then
     echo "✅ Còpia de seguretat realitzada amb èxit."
     sudo mysql -u root innovatetech_db -e "INSERT INTO registre_backups \
       (taules_incloses, resultat) VALUES \
       ('clients, productes, comandes, cistell', 'OK');"
     echo "📁 Fitxer guardat a: $BACKUP_FILE"
-    # Opcional: Cambiar el propietario para que tu usuario pueda gestionarlo sin sudo
     sudo chown mario.cabeza.7e9:mario.cabeza.7e9 $BACKUP_FILE
 else
     echo "❌ ERROR: No s'ha pogut realitzar la còpia de seguretat."
@@ -1704,8 +1678,6 @@ fi
 ```
 
 ![Script de Creació Backup](IMG/3/3.3.png)
-
-> **Motiu de la franja horària:** S'escull les 23:00h perquè coincideix amb el moment de menor activitat transaccional de l'empresa, garantint que el `mysqldump` no bloquegi les taules crítiques durant l'operativa diària.
 
 ---
 
@@ -1719,35 +1691,16 @@ fi
 
 S'ha configurat l'**Event Scheduler** de MariaDB per executar automàticament les còpies de seguretat de forma periòdica sense intervenció manual.
 
-#### Activació de l'Event Scheduler
-
 ```sql
 -- Verificar que l'event scheduler està actiu
 SHOW VARIABLES LIKE 'event_scheduler';
--- event_scheduler | ON
-```
 
-#### Events automàtics creats
-
-```sql
--- Llistar tots els events programats
+-- Llistar els events programats
 SHOW EVENTS;
-```
 
-| Db | Nom | Interval | Inici | Estat |
-| :--- | :--- | :--- | :--- | :--- |
-| `innovatetech_db` | `backup_diari_innovatetech` | `1 DAY` | `2026-05-28 21:38:11` | `ENABLED` |
-
-#### Historial de backups realitzats
-
-```sql
+-- Consultar l'historial de backups
 SELECT * FROM registre_backups ORDER BY data_hora DESC;
 ```
-
-| id\_backup | data\_hora | taules\_incloses | resultat |
-| :--- | :--- | :--- | :--- |
-| 2 | 2026-05-28 21:38:11 | empleats, clients, comandes, registre\_trucades | OK |
-| 1 | 2026-05-21 07:33:14 | clients, productes, comandes, cistell | OK |
 
 ![Còpies de Seguretat i Events](IMG/3/3.4.png)
 
@@ -1757,15 +1710,13 @@ SELECT * FROM registre_backups ORDER BY data_hora DESC;
 
 ### 3.5.1 Diagrama E/R
 
-**Diagrama Entitat-Relació (Model Físic):**
-
 ![Diagrama ER InnovateTech](IMG/3/PROYECTO_TRANSVERSAL.png)
 
 ---
 
 ### 3.5.2 Esquema relacional
 
-L'esquema de la base de dades s'estructura en **català**, consolidant un total de **16 taules** operatives dividides en 6 mòduls funcionals:
+L'esquema de la base de dades consolida **16 taules** operatives en 6 mòduls funcionals:
 
 **1. Gestió de Personal i Recursos Humans**
 
@@ -1817,28 +1768,7 @@ L'esquema de la base de dades s'estructura en **català**, consolidant un total 
 
 ### 3.5.3 Implementació en el SGBD
 
-#### Model relacional: 16 taules creades
-
-```sql
-SHOW TABLES;
--- 16 rows in set (0.001 sec)
-```
-
 ![Model Relacional 16 Taules](IMG/3/3-1.png)
-
-#### Rols i permisos verificats
-
-![Rols i Permisos](IMG/3/3.2.png)
-
-#### Script de backup i còpies de seguretat
-
-![Script Backup](IMG/3/3.3.png)
-
-#### Events automàtics i historial de backups
-
-![Còpies de Seguretat](IMG/3/3.4.png)
-
-#### Evidència d'implementació i integritat del sistema
 
 ```sql
 SELECT COUNT(*) AS Taules, CURRENT_TIMESTAMP AS 'Hora de la Defensa'
@@ -1849,5 +1779,3 @@ WHERE table_schema = 'innovatetech_db';
 
 ![Implementació del Sistema](IMG/3/3.5.png)
 
-> [!TIP]
-> **Evidència final:** La consulta `SELECT COUNT(*)` sobre `information_schema.tables` confirma que les **16 taules** del model relacional estan correctament implementades al servidor de producció `srv-bbdd` en el moment de la defensa (`2026-05-28 22:24:00`).
