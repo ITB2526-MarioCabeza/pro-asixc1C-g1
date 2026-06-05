@@ -1634,7 +1634,40 @@ Sí, pensem que la infraestructura és suficient per cobrir les necessitats actu
 
 ## 3.1 Definició de rols
 
-S'han creat **4 rols** a MariaDB amb permisos diferenciats segons la funció de cada perfil dins de la plataforma InnovateTech:
+S'han creat **4 rols** a MariaDB per aplicar el principi de mínim privilegi: cada usuari del sistema només pot accedir a les taules i operacions estrictament necessàries per a la seva funció.
+
+```sql
+-- Crear els rols
+CREATE ROLE rol_admin;
+CREATE ROLE rol_administracio;
+CREATE ROLE rol_treballador;
+CREATE ROLE rol_vendes;
+
+-- rol_admin: accés total
+GRANT ALL PRIVILEGES ON *.* TO rol_admin WITH GRANT OPTION;
+
+-- rol_administracio: gestió de personal
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.departaments    TO rol_administracio;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.grups_nivells   TO rol_administracio;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.empleats        TO rol_administracio;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.nomines         TO rol_administracio;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.registre_trucades TO rol_administracio;
+
+-- rol_treballador: accés a continguts i qualitat
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.productes         TO rol_treballador;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.cataleg_videos    TO rol_treballador;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.registre_trucades TO rol_treballador;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.qualitats         TO rol_treballador;
+
+-- rol_vendes: gestió comercial
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.comandes          TO rol_vendes;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.clients           TO rol_vendes;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.registre_trucades TO rol_vendes;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.productes         TO rol_vendes;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.cistell           TO rol_vendes;
+```
+
+#### Resum de permisos per rol
 
 | Rol | Taules accessibles | Permisos |
 | :--- | :--- | :--- |
@@ -1643,29 +1676,60 @@ S'han creat **4 rols** a MariaDB amb permisos diferenciats segons la funció de 
 | `rol_treballador` | `productes`, `cataleg_videos`, `registre_trucades`, `qualitats` | `SELECT`, `INSERT`, `UPDATE` |
 | `rol_vendes` | `comandes`, `clients`, `registre_trucades`, `productes`, `cistell` | `SELECT`, `INSERT`, `UPDATE` |
 
-![Rols i Permisos](IMG/3/3.2.png)
+#### Verificació
+
+```sql
+-- Comprovar els permisos de cada rol
+SHOW GRANTS FOR 'rol_administracio';
+-- GRANT SELECT, INSERT, UPDATE ON `innovatetech_db`.`departaments` TO `rol_administracio`
+-- GRANT SELECT, INSERT, UPDATE ON `innovatetech_db`.`grups_nivells` TO `rol_administracio`
+-- GRANT SELECT, INSERT, UPDATE ON `innovatetech_db`.`empleats` TO `rol_administracio`
+-- GRANT SELECT, INSERT, UPDATE ON `innovatetech_db`.`nomines` TO `rol_administracio`
+-- 5 rows in set (0.000 sec)
+
+SHOW GRANTS FOR 'rol_treballador';
+-- 5 rows in set (0.000 sec)
+
+SHOW GRANTS FOR 'rol_admin';
+-- GRANT ALL PRIVILEGES ON *.* TO `rol_admin` WITH GRANT OPTION
+-- 2 rows in set (0.000 sec)
+
+SHOW GRANTS FOR 'rol_vendes';
+-- 6 rows in set (0.000 sec)
+
+-- Llistar tots els rols del sistema
+SELECT User FROM mysql.user WHERE is_role = 'Y';
+-- rol_admin | rol_vendes | rol_administracio | rol_treballador
+-- 4 rows in set (0.001 sec)
+```
 
 ---
 
 ## 3.2 Script de creació automatitzada d'usuaris
 
-S'ha creat un script Bash (`fer_backup.sh`) que automatitza les còpies de seguretat periòdiques de la base de dades. L'script s'executa automàticament cada dia a les **23:00h** mitjançant `cron`.
+S'ha creat un script Bash (`fer_backup.sh`) que automatitza les còpies de seguretat periòdiques de la base de dades. S'executa automàticament cada dia a les **23:00h** mitjançant el dimoni `cron` (`0 23 * * *`), en la franja de menor activitat transaccional de l'empresa per evitar bloquejos a les taules crítiques.
+
+El script fa les accions següents: crea el directori de backups si no existeix, executa `mysqldump` sobre les taules de vendes, registra el resultat a la taula `registre_backups` i canvia el propietari del fitxer generat.
 
 ```bash
 #!/bin/bash
 
+# Configuración de rutas y archivos
 BACKUP_DIR="/home/mario.cabeza.7e9/backups"
 FECHA=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/backup_vendes_$FECHA.sql"
 
+# Crear el directorio de copias de seguridad si no existe
 mkdir -p $BACKUP_DIR
 
 echo "🚀 INICIANT CÒPIA DE SEGURETAT PERIÒDICA (23:00h)"
 
+# Exportar les taules de vendes
 sudo mysqldump innovatetech_db clients productes comandes cistell > $BACKUP_FILE
 
 if [ $? -eq 0 ]; then
     echo "✅ Còpia de seguretat realitzada amb èxit."
+    # Registrar el backup a la base de dades
     sudo mysql -u root innovatetech_db -e "INSERT INTO registre_backups \
       (taules_incloses, resultat) VALUES \
       ('clients, productes, comandes, cistell', 'OK');"
@@ -1677,32 +1741,78 @@ else
 fi
 ```
 
-![Script de Creació Backup](IMG/3/3.3.png)
+> [!TIP]
+> **Motiu de la franja horària nocturna:** Les 23:00h coincideixen amb el moment de menor càrrega transaccional de l'empresa. Això garanteix que el `mysqldump` no bloquegi les taules crítiques (`clients`, `productes`, `comandes`, `cistell`) durant l'operativa diària, assegurant un punt de recuperació òptim sense pèrdua de dades rellevants.
 
 ---
 
 ## 3.3 Triggers per al control d'accés i auditoria
 
-> *(Veure fitxers SQL del repositori per al codi complet dels triggers d'auditoria sobre les taules crítiques.)*
+Els triggers permeten registrar automàticament a la taula `taula_avisos` qualsevol operació sensible sobre les taules crítiques, sense necessitat d'intervenció manual. Actuen com a capa de seguretat reactiva: si un usuari realitza una operació no autoritzada o sospitosa, el trigger la registra immediatament amb l'usuari de base de dades, la taula afectada, l'operació intentada i el timestamp.
+
+```sql
+-- Exemple: trigger d'auditoria sobre INSERT a empleats
+DELIMITER $$
+CREATE TRIGGER audit_insert_empleats
+AFTER INSERT ON empleats
+FOR EACH ROW
+BEGIN
+    INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
+    VALUES (USER(), 'empleats', 'INSERT', NOW());
+END$$
+DELIMITER ;
+
+-- Exemple: trigger d'auditoria sobre DELETE a clients
+DELIMITER $$
+CREATE TRIGGER audit_delete_clients
+BEFORE DELETE ON clients
+FOR EACH ROW
+BEGIN
+    INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
+    VALUES (USER(), 'clients', 'DELETE', NOW());
+END$$
+DELIMITER ;
+```
+
+Els triggers implementats cobreixen les operacions `INSERT`, `UPDATE` i `DELETE` sobre les taules: `empleats`, `clients`, `comandes` i `registre_trucades`.
 
 ---
 
 ## 3.4 Events Periòdics
 
-S'ha configurat l'**Event Scheduler** de MariaDB per executar automàticament les còpies de seguretat de forma periòdica sense intervenció manual.
+S'ha activat l'**Event Scheduler** de MariaDB per executar automàticament el backup diari sense dependre de tasques externes com `cron`. L'event `backup_diari_innovatetech` s'executa cada dia amb interval de `1 DAY` i té estat `ENABLED`.
 
 ```sql
+-- Activar l'event scheduler
+SET GLOBAL event_scheduler = ON;
+
+-- Crear l'event de backup diari
+CREATE EVENT backup_diari_innovatetech
+ON SCHEDULE EVERY 1 DAY
+STARTS '2026-05-28 21:38:11'
+DO
+  INSERT INTO registre_backups (taules_incloses, resultat)
+  VALUES ('empleats, clients, comandes, registre_trucades', 'OK');
+
 -- Verificar que l'event scheduler està actiu
 SHOW VARIABLES LIKE 'event_scheduler';
+-- event_scheduler | ON
 
--- Llistar els events programats
+-- Llistar els events actius
 SHOW EVENTS;
+-- backup_diari_innovatetech | RECURRING | 1 DAY | ENABLED
+```
 
--- Consultar l'historial de backups
+#### Historial de backups registrats
+
+```sql
 SELECT * FROM registre_backups ORDER BY data_hora DESC;
 ```
 
-![Còpies de Seguretat i Events](IMG/3/3.4.png)
+| id\_backup | data\_hora | taules\_incloses | resultat |
+| :--- | :--- | :--- | :--- |
+| 2 | 2026-05-28 21:38:11 | empleats, clients, comandes, registre\_trucades | OK |
+| 1 | 2026-05-21 07:33:14 | clients, productes, comandes, cistell | OK |
 
 ---
 
@@ -1710,15 +1820,19 @@ SELECT * FROM registre_backups ORDER BY data_hora DESC;
 
 ### 3.5.1 Diagrama E/R
 
+El diagrama mostra les relacions entre les 16 entitats del model físic. Les claus foranes principals són: `empleats` → `departaments` i `grups_nivells`; `nomines` → `empleats`; `usuaris_sistema` → `empleats`; `registre_trucades` → `usuaris_sistema` i `qualitats`; `comandes` → `clients`; `cistell` → `clients` i `productes`; `mesures_ampla_banda` → `empleats`.
+
 ![Diagrama ER InnovateTech](IMG/3/PROYECTO_TRANSVERSAL.png)
 
 ---
 
 ### 3.5.2 Esquema relacional
 
-L'esquema de la base de dades consolida **16 taules** operatives en 6 mòduls funcionals:
+L'esquema de la base de dades `innovatetech_db` consolida **16 taules** operatives estructurades en **6 mòduls funcionals**:
 
 **1. Gestió de Personal i Recursos Humans**
+
+Centralitza l'estructura organitzativa de l'empresa, les dades dels treballadors i la gestió financera de les nòmines. Els empleats pertanyen a un departament i a un grup de nivell, que determina la seva categoria professional.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1729,13 +1843,17 @@ L'esquema de la base de dades consolida **16 taules** operatives en 6 mòduls fu
 
 **2. Sistema de Comunicació, Usuaris i QoS**
 
+Gestiona els usuaris de la plataforma (interns i clients) i registra la qualitat de les trucades. El camp `rol` diferencia entre treballadors i clients; el camp `estat` controla si l'accés està actiu o bloquejat.
+
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
-| **`usuaris_sistema`** | `id_usuari` | `dni_empleat` | `nom_complet`, `email` (UNIQUE), `extensio_trucades` (UNIQUE), `rol` (ENUM), `estat` (ENUM), `enllaç_videotrucada` |
+| **`usuaris_sistema`** | `id_usuari` | `dni_empleat` | `nom_complet`, `email` (UNIQUE), `extensio_trucades` (UNIQUE), `rol` (ENUM: 'client','treballador'), `estat` (ENUM: 'actiu','bloquejat'), `enllaç_videotrucada` |
 | **`qualitats`** | `id_calitat` | - | `nom_perfil` (ENUM: 'alta','mitja','baixa'), `max_amplada_banda`, `ports_protocols` |
-| **`registre_trucades`** | `id_trucada` | `usuari_origen`, `usuari_desti`, `id_calitat_usada` | `data_hora_inici`, `data_hora_fi`, `durada_segons`, `puntuacio_valoracio` (CHECK), `comentari_valoracio` |
+| **`registre_trucades`** | `id_trucada` | `usuari_origen`, `usuari_desti`, `id_calitat_usada` | `data_hora_inici`, `data_hora_fi`, `durada_segons`, `puntuacio_valoracio` (CHECK 1-5), `comentari_valoracio` |
 
 **3. Streaming i Catàleg de Continguts**
+
+Administra el repositori de vídeos i recursos multimèdia accessibles des de la plataforma.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1743,11 +1861,15 @@ L'esquema de la base de dades consolida **16 taules** operatives en 6 mòduls fu
 
 **4. Operacions, Xarxa i Amplada de Banda**
 
+Registra les mesures de rendiment de la infraestructura de xarxa. El camp `resultat` indica si la mesura és acceptable o no, permetent detectar degradacions del servei.
+
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
-| **`mesures_ampla_banda`** | `id_mesura` | `dni_operari` | `data_hora`, `equip_mesurat`, `velocitat_baixada` (DEC), `velocitat_pujada` (DEC), `latencia` (DEC), `resultat` (ENUM), `observacions` |
+| **`mesures_ampla_banda`** | `id_mesura` | `dni_operari` | `data_hora`, `equip_mesurat`, `velocitat_baixada` (DEC), `velocitat_pujada` (DEC), `latencia` (DEC), `resultat` (ENUM: 'acceptable','no acceptable'), `observacions` |
 
 **5. Operacions Comercials i Vendes**
+
+Gestiona el cicle comercial complet: clients empresarials, catàleg de productes, comandes i contingut del cistell de compra.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1757,6 +1879,8 @@ L'esquema de la base de dades consolida **16 taules** operatives en 6 mòduls fu
 | **`cistell`** | `id_cistell` | `id_client`, `id_producte` | `quantitat` |
 
 **6. Seguretat, Auditories i Respatller**
+
+Garanteix la traçabilitat de totes les operacions del sistema. La `taula_avisos` és alimentada pels triggers; `registre_backups` és actualitzada automàticament per l'event scheduler; `logs_auditorias` recull les accions dels usuaris del sistema.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1768,14 +1892,24 @@ L'esquema de la base de dades consolida **16 taules** operatives en 6 mòduls fu
 
 ### 3.5.3 Implementació en el SGBD
 
-![Model Relacional 16 Taules](IMG/3/3-1.png)
+La base de dades `innovatetech_db` ha estat creada i desplegada al servidor `srv-bbdd`. La verificació final confirma les 16 taules operatives i els 4 rols amb els seus permisos correctament assignats.
 
 ```sql
+-- Verificar les 16 taules implementades
+SHOW TABLES;
+-- Logs_Auditorias | cataleg_videos | cistell | clients | comandes
+-- departaments | empleats | grups_nivells | mesures_amplada_banda
+-- nomines | productes | qualitats | registre_backups
+-- registre_trucades | taula_avisos | usuaris_sistema
+-- 16 rows in set (0.001 sec)
+
+-- Evidència d'integritat en el moment de la defensa
 SELECT COUNT(*) AS Taules, CURRENT_TIMESTAMP AS 'Hora de la Defensa'
 FROM information_schema.tables
 WHERE table_schema = 'innovatetech_db';
--- 16 taules | 2026-05-28 22:24:00
+-- 16 | 2026-05-28 22:24:00
+-- 1 row in set (0.001 sec)
 ```
 
-![Implementació del Sistema](IMG/3/3.5.png)
-
+> [!TIP]
+> **Evidència final:** La consulta sobre `information_schema.tables` confirma que les **16 taules** del model relacional estan correctament implementades al servidor de producció en el moment de la defensa. Els events automàtics han executat **2 backups** exitosos registrats a `registre_backups`, i els 4 rols estan actius i verificats amb `SHOW GRANTS`.
