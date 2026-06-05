@@ -1629,7 +1629,7 @@ Durant les proves amb diversos serveis actius simultàniament, la infraestructur
 Sí, pensem que la infraestructura és suficient per cobrir les necessitats actuals dels serveis multimèdia. Els resultats obtinguts mostren un bon rendiment i no es consideren necessàries millores addicionals.
  
 ---
- 
+
 # 3. Disseny i implementació d'una base de dades [⬆](#índex)
 
 ## 3.1 Definició de rols
