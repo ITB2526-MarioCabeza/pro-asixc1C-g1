@@ -1829,12 +1829,12 @@ fi
 # ⚠️  AVÍS: L'usuari 'anna_vendes'@'localhost' ja existeix a MariaDB. No s'ha creat.
 
 # Intentar crear un usuari amb un rol no vàlid
-./crear_usuaris.sh marc_rrhh Test123 recursos
+./crear_usuaris.sh mario_rrhh Test123 recursos
 # ❌ ERROR: Rol 'recursos' no vàlid. Rols permesos: admin vendes administracio treballador
 
 # Donar d'alta un usuari d'administració
-./crear_usuaris.sh marc_administracio S3cur3! administracio
-# ✅ Usuari 'marc_administracio' creat correctament amb rol 'rol_administracio'.
+./crear_usuaris.sh mario_administracio S3cur3! administracio
+# ✅ Usuari 'mario_administracio' creat correctament amb rol 'rol_administracio'.
 ```
 
 #### Fitxer .sql generat (exemple)
@@ -1856,12 +1856,12 @@ FLUSH PRIVILEGES;
 
 ```sql
 -- Verificar que l'usuari existeix i té el rol assignat
-SELECT User, Host FROM mysql.user WHERE User IN ('anna_vendes','marc_administracio');
+SELECT User, Host FROM mysql.user WHERE User IN ('anna_vendes','mario_administracio');
 -- +-------------------+-----------+
 -- | User              | Host      |
 -- +-------------------+-----------+
 -- | anna_vendes       | localhost |
--- | marc_administracio| localhost |
+-- | mario_administracio| localhost |
 -- +-------------------+-----------+
 
 SHOW GRANTS FOR 'anna_vendes'@'localhost';
@@ -1878,7 +1878,7 @@ SHOW GRANTS FOR 'anna_vendes'@'localhost';
 
 S'han implementat **7 triggers** que actuen com a capa de seguretat reactiva a la base de dades. Tots els triggers que bloquegen operacions insereixen prèviament un registre a `taula_avisos` **abans** de llançar l'error, garantint que l'intent queda traçat fins i tot si la transacció fa rollback.
 
-> **Nota tècnica:** Els triggers identifiquen el rol de l'usuari mitjançant la funció `USER()` de MariaDB, que retorna el nom de l'usuari connectat. Per això, tots els usuaris del sistema han de seguir la convenció de nom `nomUsuari_rol` (per exemple: `anna_vendes`, `marc_administracio`). Si un usuari no segueix aquesta convenció, els triggers no el detectaran correctament.
+> **Nota tècnica:** Els triggers identifiquen el rol de l'usuari mitjançant la funció `USER()` de MariaDB, que retorna el nom de l'usuari connectat. Per això, tots els usuaris del sistema han de seguir la convenció de nom `nomUsuari_rol` (per exemple: `anna_vendes`, `mario_administracio`). Si un usuari no segueix aquesta convenció, els triggers no el detectaran correctament.
 
 ---
 
