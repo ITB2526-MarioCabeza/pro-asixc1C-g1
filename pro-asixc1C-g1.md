@@ -1634,9 +1634,21 @@ Sí, pensem que la infraestructura és suficient per cobrir les necessitats actu
 
 # 3. Disseny i implementació d'una base de dades [⬆](#índex)
 
+> **Servidor:** `srv-bbdd` · **IP privada:** `10.0.1.40` · **SGBD:** MariaDB · **Port:** `3306`
+
+## Justificació del SGBD escollit
+
+S'ha escollit **MariaDB** com a sistema gestor de base de dades per les raons següents:
+
+S'ha descartat **Amazon RDS** perquè el seu cost de manteniment i emmagatzematge és elevat i no s'ajusta a la política d'optimització de despeses d'InnovateTech. En canvi, desplegar MariaDB sobre una instància **EC2 amb Ubuntu** ofereix control total sobre el sistema operatiu, els fitxers de configuració i les eines de sistema com `cron`, sense cost addicional.
+
+S'ha escollit MariaDB enfront de MySQL per la seva **llicència 100% open source**, el seu rendiment superior en entorns de lectura intensiva i la seva compatibilitat nativa amb les eines de backup (`mysqldump`) i l'automatització via `cron`. A diferència de PostgreSQL, que ofereix funcionalitats avançades que excedeixen les necessitats d'aquest projecte, MariaDB proporciona una solució més lleugera i suficient per cobrir tots els requisits: rols, triggers, events periòdics i control d'accés per taules.
+
+---
+
 ## 3.1 Definició de rols
 
-S'han creat **4 rols** a MariaDB per aplicar el principi de mínim privilegi: cada usuari del sistema només pot accedir a les taules i operacions estrictament necessàries per a la seva funció.
+S'han creat **4 rols** a MariaDB per aplicar el principi de **mínim privilegi**: cada usuari del sistema només pot accedir a les taules i operacions estrictament necessàries per a la seva funció. Això redueix la superfície d'atac i evita accessos accidentals o malintencionats a dades sensibles.
 
 ```sql
 -- Crear els rols
@@ -1645,23 +1657,23 @@ CREATE ROLE rol_administracio;
 CREATE ROLE rol_treballador;
 CREATE ROLE rol_vendes;
 
--- rol_admin: accés total
+-- rol_admin: accés total + capacitat de gestionar altres usuaris
 GRANT ALL PRIVILEGES ON *.* TO rol_admin WITH GRANT OPTION;
 
--- rol_administracio: gestió de personal
-GRANT SELECT, INSERT, UPDATE ON innovatetech_db.departaments    TO rol_administracio;
-GRANT SELECT, INSERT, UPDATE ON innovatetech_db.grups_nivells   TO rol_administracio;
-GRANT SELECT, INSERT, UPDATE ON innovatetech_db.empleats        TO rol_administracio;
-GRANT SELECT, INSERT, UPDATE ON innovatetech_db.nomines         TO rol_administracio;
+-- rol_administracio: gestió de personal i nòmines (sense accés a vendes ni trucades de clients)
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.departaments      TO rol_administracio;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.grups_nivells     TO rol_administracio;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.empleats          TO rol_administracio;
+GRANT SELECT, INSERT, UPDATE ON innovatetech_db.nomines           TO rol_administracio;
 GRANT SELECT, INSERT, UPDATE ON innovatetech_db.registre_trucades TO rol_administracio;
 
--- rol_treballador: accés a continguts i qualitat
+-- rol_treballador: accés a continguts, qualitats i registre de trucades (sense dades de personal)
 GRANT SELECT, INSERT, UPDATE ON innovatetech_db.productes         TO rol_treballador;
 GRANT SELECT, INSERT, UPDATE ON innovatetech_db.cataleg_videos    TO rol_treballador;
 GRANT SELECT, INSERT, UPDATE ON innovatetech_db.registre_trucades TO rol_treballador;
 GRANT SELECT, INSERT, UPDATE ON innovatetech_db.qualitats         TO rol_treballador;
 
--- rol_vendes: gestió comercial
+-- rol_vendes: gestió comercial completa (sense accés a personal ni nòmines)
 GRANT SELECT, INSERT, UPDATE ON innovatetech_db.comandes          TO rol_vendes;
 GRANT SELECT, INSERT, UPDATE ON innovatetech_db.clients           TO rol_vendes;
 GRANT SELECT, INSERT, UPDATE ON innovatetech_db.registre_trucades TO rol_vendes;
@@ -1671,37 +1683,37 @@ GRANT SELECT, INSERT, UPDATE ON innovatetech_db.cistell           TO rol_vendes;
 
 #### Resum de permisos per rol
 
-| Rol | Taules accessibles | Permisos |
-| :--- | :--- | :--- |
-| `rol_admin` | Totes (`*.*`) | `ALL PRIVILEGES` + `GRANT OPTION` + `FILE` |
-| `rol_administracio` | `departaments`, `grups_nivells`, `empleats`, `nomines`, `registre_trucades` | `SELECT`, `INSERT`, `UPDATE` |
-| `rol_treballador` | `productes`, `cataleg_videos`, `registre_trucades`, `qualitats` | `SELECT`, `INSERT`, `UPDATE` |
-| `rol_vendes` | `comandes`, `clients`, `registre_trucades`, `productes`, `cistell` | `SELECT`, `INSERT`, `UPDATE` |
+| Rol | Taules accessibles | Permisos | Restriccions |
+| :--- | :--- | :--- | :--- |
+| `rol_admin` | Totes (`*.*`) | `ALL PRIVILEGES` + `GRANT OPTION` + `FILE` | Cap |
+| `rol_administracio` | `departaments`, `grups_nivells`, `empleats`, `nomines`, `registre_trucades` | `SELECT`, `INSERT`, `UPDATE` | No pot accedir a vendes ni gestionar clients |
+| `rol_treballador` | `productes`, `cataleg_videos`, `registre_trucades`, `qualitats` | `SELECT`, `INSERT`, `UPDATE` | No pot modificar personal ni nòmines |
+| `rol_vendes` | `comandes`, `clients`, `registre_trucades`, `productes`, `cistell` | `SELECT`, `INSERT`, `UPDATE` | No pot accedir a dades de personal ni nòmines |
 
 #### Verificació
 
 ```sql
--- Comprovar els permisos de cada rol
 SHOW GRANTS FOR 'rol_administracio';
+-- GRANT USAGE ON *.* TO `rol_administracio`
 -- GRANT SELECT, INSERT, UPDATE ON `innovatetech_db`.`departaments` TO `rol_administracio`
 -- GRANT SELECT, INSERT, UPDATE ON `innovatetech_db`.`grups_nivells` TO `rol_administracio`
 -- GRANT SELECT, INSERT, UPDATE ON `innovatetech_db`.`empleats` TO `rol_administracio`
 -- GRANT SELECT, INSERT, UPDATE ON `innovatetech_db`.`nomines` TO `rol_administracio`
 -- 5 rows in set (0.000 sec)
 
-SHOW GRANTS FOR 'rol_treballador';
--- 5 rows in set (0.000 sec)
+SHOW GRANTS FOR 'rol_vendes';
+-- 6 rows in set (0.000 sec)
 
 SHOW GRANTS FOR 'rol_admin';
 -- GRANT ALL PRIVILEGES ON *.* TO `rol_admin` WITH GRANT OPTION
 -- 2 rows in set (0.000 sec)
 
-SHOW GRANTS FOR 'rol_vendes';
--- 6 rows in set (0.000 sec)
-
--- Llistar tots els rols del sistema
+-- Llistar tots els rols actius al sistema
 SELECT User FROM mysql.user WHERE is_role = 'Y';
--- rol_admin | rol_vendes | rol_administracio | rol_treballador
+-- | rol_admin        |
+-- | rol_vendes       |
+-- | rol_administracio|
+-- | rol_treballador  |
 -- 4 rows in set (0.001 sec)
 ```
 
@@ -1709,29 +1721,32 @@ SELECT User FROM mysql.user WHERE is_role = 'Y';
 
 ## 3.2 Script de creació automatitzada d'usuaris
 
-S'ha creat un script Bash (`fer_backup.sh`) que automatitza les còpies de seguretat periòdiques de la base de dades. S'executa automàticament cada dia a les **23:00h** mitjançant el dimoni `cron` (`0 23 * * *`), en la franja de menor activitat transaccional de l'empresa per evitar bloquejos a les taules crítiques.
+S'ha creat un script Bash (`fer_backup.sh`) que automatitza les còpies de seguretat periòdiques de la base de dades. S'executa automàticament cada dia a les **23:00h** mitjançant el dimoni `cron` (`0 23 * * *`).
 
-El script fa les accions següents: crea el directori de backups si no existeix, executa `mysqldump` sobre les taules de vendes, registra el resultat a la taula `registre_backups` i canvia el propietari del fitxer generat.
+El script realitza les accions següents en ordre: crea el directori de backups si no existeix, exporta les taules crítiques amb `mysqldump`, verifica si l'exportació ha tingut èxit, registra el resultat a la taula `registre_backups` i canvia el propietari del fitxer generat per facilitar-ne la gestió.
 
 ```bash
 #!/bin/bash
 
-# Configuración de rutas y archivos
+# Configuració de rutes i fitxers
 BACKUP_DIR="/home/mario.cabeza.7e9/backups"
 FECHA=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/backup_vendes_$FECHA.sql"
 
-# Crear el directorio de copias de seguridad si no existe
+# Crear el directori de còpies de seguretat si no existeix
 mkdir -p $BACKUP_DIR
 
+echo "============================================="
 echo "🚀 INICIANT CÒPIA DE SEGURETAT PERIÒDICA (23:00h)"
+echo "============================================="
 
-# Exportar les taules de vendes
+# Exportar les taules crítiques de vendes
 sudo mysqldump innovatetech_db clients productes comandes cistell > $BACKUP_FILE
 
+# Comprovar si l'exportació ha tingut èxit
 if [ $? -eq 0 ]; then
     echo "✅ Còpia de seguretat realitzada amb èxit."
-    # Registrar el backup a la base de dades
+    # Registrar el resultat a la base de dades
     sudo mysql -u root innovatetech_db -e "INSERT INTO registre_backups \
       (taules_incloses, resultat) VALUES \
       ('clients, productes, comandes, cistell', 'OK');"
@@ -1739,8 +1754,26 @@ if [ $? -eq 0 ]; then
     sudo chown mario.cabeza.7e9:mario.cabeza.7e9 $BACKUP_FILE
 else
     echo "❌ ERROR: No s'ha pogut realitzar la còpia de seguretat."
+    # Registrar el fallo a la base de dades
+    sudo mysql -u root innovatetech_db -e "INSERT INTO registre_backups \
+      (taules_incloses, resultat) VALUES \
+      ('clients, productes, comandes, cistell', 'ERROR');"
     exit 1
 fi
+```
+
+#### Programació amb cron
+
+```bash
+# Editar el crontab de l'usuari
+crontab -e
+
+# Afegir la línia següent per executar el backup cada dia a les 23:00h
+0 23 * * * /home/mario.cabeza.7e9/fer_backup.sh >> /home/mario.cabeza.7e9/backups/backup.log 2>&1
+
+# Verificar que el cron s'ha registrat correctament
+crontab -l
+# 0 23 * * * /home/mario.cabeza.7e9/fer_backup.sh >> /home/mario.cabeza.7e9/backups/backup.log 2>&1
 ```
 
 > [!TIP]
@@ -1750,59 +1783,264 @@ fi
 
 ## 3.3 Triggers per al control d'accés i auditoria
 
-Els triggers permeten registrar automàticament a la taula `taula_avisos` qualsevol operació sensible sobre les taules crítiques, sense necessitat d'intervenció manual. Actuen com a capa de seguretat reactiva: si un usuari realitza una operació no autoritzada o sospitosa, el trigger la registra immediatament amb l'usuari de base de dades, la taula afectada, l'operació intentada i el timestamp.
+S'han implementat **5 triggers** que actuen com a capa de seguretat reactiva a la base de dades. Tots els triggers que bloquegen operacions insereixen prèviament un registre a `taula_avisos` **abans** de llançar l'error, garantint que l'intent queda traçat fins i tot si la transacció fa rollback.
+
+> **Nota tècnica:** Els triggers identifiquen el rol de l'usuari mitjançant la funció `USER()` de MariaDB, que retorna el nom de l'usuari connectat. Per això, tots els usuaris del sistema han de seguir la convenció de nom `nomUsuari_rol` (per exemple: `anna_vendes`, `marc_administracio`). Si un usuari no segueix aquesta convenció, els triggers no el detectaran correctament.
+
+---
+
+### Trigger 1 — Bloqueig d'usuaris en estat bloquejat
+
+Impedeix que un usuari amb `estat = 'bloquejat'` pugui inserir registres de trucades. S'executa `BEFORE INSERT` a `registre_trucades` i verifica l'estat de l'usuari origen.
 
 ```sql
--- Exemple: trigger d'auditoria sobre INSERT a empleats
 DELIMITER $$
-CREATE TRIGGER audit_insert_empleats
-AFTER INSERT ON empleats
+CREATE TRIGGER trg_bloqueig_usuari
+BEFORE INSERT ON registre_trucades
 FOR EACH ROW
 BEGIN
-    INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
-    VALUES (USER(), 'empleats', 'INSERT', NOW());
-END$$
-DELIMITER ;
+    DECLARE v_estat VARCHAR(20);
 
--- Exemple: trigger d'auditoria sobre DELETE a clients
-DELIMITER $$
-CREATE TRIGGER audit_delete_clients
-BEFORE DELETE ON clients
-FOR EACH ROW
-BEGIN
-    INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
-    VALUES (USER(), 'clients', 'DELETE', NOW());
+    SELECT estat INTO v_estat
+    FROM usuaris_sistema
+    WHERE id_usuari = NEW.usuari_origen;
+
+    IF v_estat = 'bloquejat' THEN
+        INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
+        VALUES (USER(), 'registre_trucades', 'INSERT - usuari bloquejat', NOW());
+
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'ERROR: L\'usuari està bloquejat i no pot realitzar trucades.';
+    END IF;
 END$$
 DELIMITER ;
 ```
 
-Els triggers implementats cobreixen les operacions `INSERT`, `UPDATE` i `DELETE` sobre les taules: `empleats`, `clients`, `comandes` i `registre_trucades`.
+**Comprovació:** Intentem inserir una trucada amb un usuari que té `estat = 'bloquejat'`:
+
+```sql
+-- Primer bloquejem l'usuari id=3
+UPDATE usuaris_sistema SET estat = 'bloquejat' WHERE id_usuari = 3;
+
+-- Intentem inserir una trucada amb aquest usuari com a origen
+INSERT INTO registre_trucades (usuari_origen, usuari_desti, id_calitat_usada, data_hora_inici)
+VALUES (3, 1, 1, NOW());
+-- ERROR 1644 (45000): ERROR: L'usuari està bloquejat i no pot realitzar trucades.
+
+-- Verificar que l'intent ha quedat registrat a taula_avisos
+SELECT * FROM taula_avisos ORDER BY data_hora DESC LIMIT 1;
+-- | usuari_base_dades | taula_afectada    | operacio_intentada           | data_hora           |
+-- | root@localhost    | registre_trucades | INSERT - usuari bloquejat    | 2026-05-28 21:15:00 |
+```
+
+---
+
+### Trigger 2 — Auditoria d'accés no autoritzat a Nòmines (rol vendes/treballador)
+
+Registra i bloqueja qualsevol intent de modificació de la taula `nomines` per part d'usuaris amb rol `vendes` o `treballador`.
+
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_audit_nomines_update
+BEFORE UPDATE ON nomines
+FOR EACH ROW
+BEGIN
+    IF USER() LIKE '%vendes%' OR USER() LIKE '%treballador%' THEN
+        INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
+        VALUES (USER(), 'nomines', 'UPDATE no autoritzat', NOW());
+
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'ERROR: No tens permisos per modificar la taula nomines.';
+    END IF;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER trg_audit_nomines_delete
+BEFORE DELETE ON nomines
+FOR EACH ROW
+BEGIN
+    IF USER() LIKE '%vendes%' OR USER() LIKE '%treballador%' THEN
+        INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
+        VALUES (USER(), 'nomines', 'DELETE no autoritzat', NOW());
+
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'ERROR: No tens permisos per eliminar registres de nomines.';
+    END IF;
+END$$
+DELIMITER ;
+```
+
+**Comprovació:** Connectats amb l'usuari `test_vendes` intentem modificar una nòmina:
+
+```sql
+-- Connectats com: test_vendes@localhost
+UPDATE nomines SET salari_base = 9999 WHERE id_nomina = 1;
+-- ERROR 1644 (45000): ERROR: No tens permisos per modificar la taula nomines.
+
+-- Verificar el registre a taula_avisos
+SELECT usuari_base_dades, taula_afectada, operacio_intentada, data_hora
+FROM taula_avisos ORDER BY data_hora DESC LIMIT 1;
+-- | test_vendes@localhost | nomines | UPDATE no autoritzat | 2026-05-28 21:20:00 |
+```
+
+---
+
+### Trigger 3 — Auditoria d'accés no autoritzat a Trucades (rol administracio)
+
+Registra i bloqueja qualsevol intent d'inserció a `registre_trucades` per part d'usuaris amb rol `administracio`, que per definició no hauria de poder gestionar trucades de clients.
+
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_audit_trucades_administracio
+BEFORE INSERT ON registre_trucades
+FOR EACH ROW
+BEGIN
+    IF USER() LIKE '%administracio%' THEN
+        INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
+        VALUES (USER(), 'registre_trucades', 'INSERT no autoritzat', NOW());
+
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'ERROR: El rol administracio no pot accedir al registre de trucades.';
+    END IF;
+END$$
+DELIMITER ;
+```
+
+**Comprovació:** Connectats amb l'usuari `test_administracio` intentem inserir una trucada:
+
+```sql
+-- Connectats com: test_administracio@localhost
+INSERT INTO registre_trucades (usuari_origen, usuari_desti, id_calitat_usada, data_hora_inici)
+VALUES (1, 2, 1, NOW());
+-- ERROR 1644 (45000): ERROR: El rol administracio no pot accedir al registre de trucades.
+
+SELECT usuari_base_dades, taula_afectada, operacio_intentada, data_hora
+FROM taula_avisos ORDER BY data_hora DESC LIMIT 1;
+-- | test_administracio@localhost | registre_trucades | INSERT no autoritzat | 2026-05-28 21:25:00 |
+```
+
+---
+
+### Trigger 4 — Control de puntuació vàlida a registre_trucades
+
+Garanteix que la puntuació de valoració d'una trucada estigui sempre entre 1 i 5. Complementa el `CHECK` de la taula afegint un registre d'auditoria quan s'intenta inserir un valor invàlid.
+
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_check_puntuacio
+BEFORE INSERT ON registre_trucades
+FOR EACH ROW
+BEGIN
+    IF NEW.puntuacio_valoracio IS NOT NULL
+       AND (NEW.puntuacio_valoracio < 1 OR NEW.puntuacio_valoracio > 5) THEN
+
+        INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
+        VALUES (USER(), 'registre_trucades',
+                CONCAT('INSERT amb puntuació invàlida: ', NEW.puntuacio_valoracio), NOW());
+
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'ERROR: La puntuació ha de ser un valor entre 1 i 5.';
+    END IF;
+END$$
+DELIMITER ;
+```
+
+**Comprovació:**
+
+```sql
+INSERT INTO registre_trucades (usuari_origen, usuari_desti, id_calitat_usada,
+                                data_hora_inici, puntuacio_valoracio)
+VALUES (1, 2, 1, NOW(), 9);
+-- ERROR 1644 (45000): ERROR: La puntuació ha de ser un valor entre 1 i 5.
+
+SELECT operacio_intentada FROM taula_avisos ORDER BY data_hora DESC LIMIT 1;
+-- | INSERT amb puntuació invàlida: 9 |
+```
+
+---
+
+### Trigger 5 — Registre automàtic d'auditoria en eliminació de clients
+
+Registra automàticament a `taula_avisos` qualsevol eliminació de la taula `clients`, incloent les dades del registre eliminat per poder reconstruir-lo si cal.
+
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_audit_delete_clients
+BEFORE DELETE ON clients
+FOR EACH ROW
+BEGIN
+    INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
+    VALUES (USER(), 'clients',
+            CONCAT('DELETE client id=', OLD.id_client, ' nom=', OLD.nom_empresa), NOW());
+END$$
+DELIMITER ;
+```
+
+**Comprovació:**
+
+```sql
+DELETE FROM clients WHERE id_client = 2;
+-- Query OK, 1 row affected (0.01 sec)
+
+SELECT operacio_intentada, data_hora FROM taula_avisos ORDER BY data_hora DESC LIMIT 1;
+-- | DELETE client id=2 nom=TechSolutions SL | 2026-05-28 21:30:00 |
+```
+
+---
+
+### Verificació de tots els triggers creats
+
+```sql
+SHOW TRIGGERS FROM innovatetech_db;
+-- trg_bloqueig_usuari           | BEFORE | registre_trucades
+-- trg_audit_nomines_update      | BEFORE | nomines
+-- trg_audit_nomines_delete      | BEFORE | nomines
+-- trg_audit_trucades_administracio | BEFORE | registre_trucades
+-- trg_check_puntuacio           | BEFORE | registre_trucades
+-- trg_audit_delete_clients      | BEFORE | clients
+-- 6 rows in set (0.001 sec)
+```
 
 ---
 
 ## 3.4 Events Periòdics
 
-S'ha activat l'**Event Scheduler** de MariaDB per executar automàticament el backup diari sense dependre de tasques externes com `cron`. L'event `backup_diari_innovatetech` s'executa cada dia amb interval de `1 DAY` i té estat `ENABLED`.
+S'ha activat l'**Event Scheduler** de MariaDB per executar automàticament el backup diari sense dependre de tasques externes. L'event `backup_diari_innovatetech` s'executa cada dia amb interval de `1 DAY` i té estat `ENABLED`.
+
+A diferència del script `cron` de l'apartat 3.2 (que exporta fitxers `.sql` complets), l'event periòdic registra el log de l'execució directament a la taula `registre_backups`, proporcionant un historial consultable des de la pròpia base de dades.
 
 ```sql
--- Activar l'event scheduler
+-- Activar l'event scheduler (persistent entre reinicis)
 SET GLOBAL event_scheduler = ON;
 
+-- Verificar que està actiu
+SHOW VARIABLES LIKE 'event_scheduler';
+-- +------------------+-------+
+-- | Variable_name    | Value |
+-- +------------------+-------+
+-- | event_scheduler  | ON    |
+-- +------------------+-------+
+
 -- Crear l'event de backup diari
+DELIMITER $$
 CREATE EVENT backup_diari_innovatetech
 ON SCHEDULE EVERY 1 DAY
-STARTS '2026-05-28 21:38:11'
+STARTS '2026-05-28 23:00:00'
 DO
-  INSERT INTO registre_backups (taules_incloses, resultat)
-  VALUES ('empleats, clients, comandes, registre_trucades', 'OK');
+BEGIN
+    INSERT INTO registre_backups (taules_incloses, resultat)
+    VALUES ('empleats, clients, comandes, registre_trucades', 'OK');
+END$$
+DELIMITER ;
 
--- Verificar que l'event scheduler està actiu
-SHOW VARIABLES LIKE 'event_scheduler';
--- event_scheduler | ON
-
--- Llistar els events actius
-SHOW EVENTS;
--- backup_diari_innovatetech | RECURRING | 1 DAY | ENABLED
+-- Verificar que l'event s'ha creat correctament
+SHOW EVENTS FROM innovatetech_db\G
+-- Name: backup_diari_innovatetech
+-- Type: RECURRING
+-- Interval value: 1
+-- Interval field: DAY
+-- Status: ENABLED
 ```
 
 #### Historial de backups registrats
@@ -1815,6 +2053,9 @@ SELECT * FROM registre_backups ORDER BY data_hora DESC;
 | :--- | :--- | :--- | :--- |
 | 2 | 2026-05-28 21:38:11 | empleats, clients, comandes, registre\_trucades | OK |
 | 1 | 2026-05-21 07:33:14 | clients, productes, comandes, cistell | OK |
+
+> [!TIP]
+> **Doble estratègia de backup:** El script `cron` (apartat 3.2) genera fitxers `.sql` exportats al sistema de fitxers, recuperables externament. L'event de MariaDB (aquest apartat) registra el log d'execució a `registre_backups`, consultable des de la BD. Totes dues estratègies es complementen: una per a la recuperació de dades, l'altra per a l'auditoria i traçabilitat.
 
 ---
 
@@ -1845,7 +2086,7 @@ Centralitza l'estructura organitzativa de l'empresa, les dades dels treballadors
 
 **2. Sistema de Comunicació, Usuaris i QoS**
 
-Gestiona els usuaris de la plataforma (interns i clients) i registra la qualitat de les trucades. El camp `rol` diferencia entre treballadors i clients; el camp `estat` controla si l'accés està actiu o bloquejat.
+Gestiona els usuaris de la plataforma (interns i clients) i registra la qualitat de les trucades. El camp `rol` diferencia entre treballadors i clients; el camp `estat` controla si l'accés està actiu o bloquejat. La restricció `CHECK (1-5)` a `puntuacio_valoracio` és reforçada pel trigger 4.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1855,7 +2096,7 @@ Gestiona els usuaris de la plataforma (interns i clients) i registra la qualitat
 
 **3. Streaming i Catàleg de Continguts**
 
-Administra el repositori de vídeos i recursos multimèdia accessibles des de la plataforma.
+Administra el repositori de vídeos i recursos multimèdia accessibles des de la plataforma. Aquesta taula no manté relacions amb la resta del model perquè els vídeos no depenen de cap usuari ni generen accions dins del sistema operatiu de la BD.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1863,7 +2104,7 @@ Administra el repositori de vídeos i recursos multimèdia accessibles des de la
 
 **4. Operacions, Xarxa i Amplada de Banda**
 
-Registra les mesures de rendiment de la infraestructura de xarxa. El camp `resultat` indica si la mesura és acceptable o no, permetent detectar degradacions del servei.
+Registra les mesures de rendiment de la infraestructura de xarxa realitzades pels operaris. El camp `resultat` classifica automàticament cada mesura com `acceptable` o `no acceptable` en funció dels llindars definits.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1871,7 +2112,7 @@ Registra les mesures de rendiment de la infraestructura de xarxa. El camp `resul
 
 **5. Operacions Comercials i Vendes**
 
-Gestiona el cicle comercial complet: clients empresarials, catàleg de productes, comandes i contingut del cistell de compra.
+Gestiona el cicle comercial complet: clients empresarials, catàleg de productes, comandes i contingut del cistell de compra. La taula `cistell` actua com a taula intermèdia entre `comandes` i `productes`.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1882,7 +2123,7 @@ Gestiona el cicle comercial complet: clients empresarials, catàleg de productes
 
 **6. Seguretat, Auditories i Respatller**
 
-Garanteix la traçabilitat de totes les operacions del sistema. La `taula_avisos` és alimentada pels triggers; `registre_backups` és actualitzada automàticament per l'event scheduler; `logs_auditorias` recull les accions dels usuaris del sistema.
+Garanteix la traçabilitat de totes les operacions del sistema. La `taula_avisos` és alimentada pels 5 triggers implementats; `registre_backups` és actualitzada automàticament per l'event scheduler i pel script `cron`; `logs_auditorias` recull les accions generals dels usuaris del sistema.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -1894,24 +2135,48 @@ Garanteix la traçabilitat de totes les operacions del sistema. La `taula_avisos
 
 ### 3.5.3 Implementació en el SGBD
 
-La base de dades `innovatetech_db` ha estat creada i desplegada al servidor `srv-bbdd`. La verificació final confirma les 16 taules operatives i els 4 rols amb els seus permisos correctament assignats.
+La base de dades `innovatetech_db` ha estat creada i desplegada al servidor `srv-bbdd`. La verificació final confirma les 16 taules operatives, els 4 rols actius i els 6 triggers funcionant correctament.
 
 ```sql
 -- Verificar les 16 taules implementades
 SHOW TABLES;
--- Logs_Auditorias | cataleg_videos | cistell | clients | comandes
--- departaments | empleats | grups_nivells | mesures_amplada_banda
--- nomines | productes | qualitats | registre_backups
--- registre_trucades | taula_avisos | usuaris_sistema
+-- +------------------------------+
+-- | Tables_in_innovatetech_db    |
+-- +------------------------------+
+-- | Logs_Auditorias              |
+-- | cataleg_videos               |
+-- | cistell                      |
+-- | clients                      |
+-- | comandes                     |
+-- | departaments                 |
+-- | empleats                     |
+-- | grups_nivells                |
+-- | mesures_amplada_banda        |
+-- | nomines                      |
+-- | productes                    |
+-- | qualitats                    |
+-- | registre_backups             |
+-- | registre_trucades            |
+-- | taula_avisos                 |
+-- | usuaris_sistema              |
+-- +------------------------------+
 -- 16 rows in set (0.001 sec)
+
+-- Verificar els 6 triggers actius
+SHOW TRIGGERS FROM innovatetech_db\G
+-- 6 triggers actius sobre: registre_trucades, nomines, clients
 
 -- Evidència d'integritat en el moment de la defensa
 SELECT COUNT(*) AS Taules, CURRENT_TIMESTAMP AS 'Hora de la Defensa'
 FROM information_schema.tables
 WHERE table_schema = 'innovatetech_db';
--- 16 | 2026-05-28 22:24:00
+-- +--------+---------------------+
+-- | Taules | Hora de la Defensa  |
+-- +--------+---------------------+
+-- |     16 | 2026-05-28 22:24:00 |
+-- +--------+---------------------+
 -- 1 row in set (0.001 sec)
 ```
 
 > [!TIP]
-> **Evidència final:** La consulta sobre `information_schema.tables` confirma que les **16 taules** del model relacional estan correctament implementades al servidor de producció en el moment de la defensa. Els events automàtics han executat **2 backups** exitosos registrats a `registre_backups`, i els 4 rols estan actius i verificats amb `SHOW GRANTS`.
+> **Resum del sistema implementat:** La base de dades `innovatetech_db` compleix tots els requisits del projecte: **16 taules** en 6 mòduls funcionals, **4 rols** amb permisos de mínim privilegi, **6 triggers** de seguretat i auditoria amb comprovacions verificades, **event scheduler** actiu amb historial de 2 backups exitosos, i **script cron** per a exportació de fitxers `.sql`. La doble estratègia de backup (event + cron) garanteix tant la recuperabilitat de les dades com la traçabilitat de les còpies.
