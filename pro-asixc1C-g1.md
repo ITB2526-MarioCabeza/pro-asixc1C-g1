@@ -1721,162 +1721,69 @@ SELECT User FROM mysql.user WHERE is_role = 'Y';
 
 ## 3.2 Script de creació automatitzada d'usuaris
 
-> **[CORREGIT — Problema 1]** L'apartat anterior mostrava un script de backup en lloc del script de creació d'usuaris requerit per l'enunciat. Aquesta secció conté el script correcte que automatitza la creació d'usuaris a MariaDB amb `CREATE USER`, `GRANT` i gestió d'errors.
+S'ha creat un script Bash (`fer_backup.sh`) que automatitza les còpies de seguretat periòdiques de la base de dades. S'executa automàticament cada dia a les **23:00h** mitjançant el dimoni `cron` (`0 23 * * *`).
 
-S'ha creat un script Bash (`crear_usuaris.sh`) que automatitza la creació d'usuaris a la base de dades. El script accepta el mínim de dades necessàries (nom d'usuari, contrasenya i rol), valida el rol, crea l'usuari, li assigna el rol corresponent i genera un fitxer `.sql` de registre. Gestiona els casos d'error principals: usuari ja existent i rol no vàlid.
+El script realitza les accions següents en ordre: crea el directori de backups si no existeix, exporta les taules crítiques amb `mysqldump`, verifica si l'exportació ha tingut èxit, registra el resultat a la taula `registre_backups` i canvia el propietari del fitxer generat per facilitar-ne la gestió.
 
 ```bash
 #!/bin/bash
 
-# ============================================================
-# crear_usuaris.sh — Creació automatitzada d'usuaris a MariaDB
-# Ús: ./crear_usuaris.sh <nom_usuari> <contrasenya> <rol>
-# Rols vàlids: admin, vendes, administracio, treballador
-# ============================================================
+# Configuració de rutes i fitxers
+BACKUP_DIR="/home/mario.cabeza.7e9/backups"
+FECHA=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/backup_vendes_$FECHA.sql"
 
-DB_HOST="localhost"
-DB_ROOT_USER="root"
-SQL_OUTPUT_DIR="/home/mario.cabeza.7e9/usuaris_sql"
-ROLS_VALIDS=("admin" "vendes" "administracio" "treballador")
-
-# --- Validació d'arguments ---
-if [ $# -lt 3 ]; then
-    echo "❌ Ús incorrecte. Exemple: ./crear_usuaris.sh anna_vendes S3cur3Pass! vendes"
-    exit 1
-fi
-
-NOM_USUARI="$1"
-CONTRASENYA="$2"
-ROL="$3"
-ROL_DB="rol_${ROL}"
-SQL_FILE="$SQL_OUTPUT_DIR/creacio_${NOM_USUARI}_$(date +%Y%m%d_%H%M%S).sql"
-
-# --- Validar que el rol és un dels permesos ---
-ROL_OK=false
-for r in "${ROLS_VALIDS[@]}"; do
-    if [ "$ROL" = "$r" ]; then
-        ROL_OK=true
-        break
-    fi
-done
-
-if [ "$ROL_OK" = false ]; then
-    echo "❌ ERROR: Rol '$ROL' no vàlid. Rols permesos: ${ROLS_VALIDS[*]}"
-    exit 1
-fi
-
-# --- Crear directori de sortida si no existeix ---
-mkdir -p "$SQL_OUTPUT_DIR"
+# Crear el directori de còpies de seguretat si no existeix
+mkdir -p $BACKUP_DIR
 
 echo "============================================="
-echo "👤 CREACIÓ D'USUARI: $NOM_USUARI (rol: $ROL)"
+echo "🚀 INICIANT CÒPIA DE SEGURETAT PERIÒDICA (23:00h)"
 echo "============================================="
 
-# --- Comprovar si l'usuari ja existeix ---
-EXISTEIX=$(sudo mysql -u "$DB_ROOT_USER" -sse \
-    "SELECT COUNT(*) FROM mysql.user WHERE User='${NOM_USUARI}' AND Host='localhost';")
+# Exportar les taules crítiques de vendes
+sudo mysqldump innovatetech_db clients productes comandes cistell > $BACKUP_FILE
 
-if [ "$EXISTEIX" -gt 0 ]; then
-    echo "⚠️  AVÍS: L'usuari '${NOM_USUARI}'@'localhost' ja existeix a MariaDB. No s'ha creat."
-    exit 2
-fi
-
-# --- Generar el fitxer .sql ---
-cat > "$SQL_FILE" << EOF
--- ================================================
--- Fitxer generat per crear_usuaris.sh
--- Usuari: ${NOM_USUARI} | Rol: ${ROL_DB}
--- Data: $(date '+%Y-%m-%d %H:%M:%S')
--- ================================================
-
-CREATE USER '${NOM_USUARI}'@'localhost' IDENTIFIED BY '${CONTRASENYA}';
-GRANT ${ROL_DB} TO '${NOM_USUARI}'@'localhost';
-SET DEFAULT ROLE ${ROL_DB} FOR '${NOM_USUARI}'@'localhost';
-FLUSH PRIVILEGES;
-EOF
-
-echo "📄 Fitxer SQL generat: $SQL_FILE"
-
-# --- Executar les sentències SQL ---
-sudo mysql -u "$DB_ROOT_USER" << EOF
-CREATE USER '${NOM_USUARI}'@'localhost' IDENTIFIED BY '${CONTRASENYA}';
-GRANT ${ROL_DB} TO '${NOM_USUARI}'@'localhost';
-SET DEFAULT ROLE ${ROL_DB} FOR '${NOM_USUARI}'@'localhost';
-FLUSH PRIVILEGES;
-EOF
-
+# Comprovar si l'exportació ha tingut èxit
 if [ $? -eq 0 ]; then
-    echo "✅ Usuari '${NOM_USUARI}' creat correctament amb rol '${ROL_DB}'."
+    echo "✅ Còpia de seguretat realitzada amb èxit."
+    # Registrar el resultat a la base de dades
+    sudo mysql -u root innovatetech_db -e "INSERT INTO registre_backups \
+      (taules_incloses, resultat) VALUES \
+      ('clients, productes, comandes, cistell', 'OK');"
+    echo "📁 Fitxer guardat a: $BACKUP_FILE"
+    sudo chown mario.cabeza.7e9:mario.cabeza.7e9 $BACKUP_FILE
 else
-    echo "❌ ERROR: No s'ha pogut crear l'usuari a MariaDB."
+    echo "❌ ERROR: No s'ha pogut realitzar la còpia de seguretat."
+    # Registrar el fallo a la base de dades
+    sudo mysql -u root innovatetech_db -e "INSERT INTO registre_backups \
+      (taules_incloses, resultat) VALUES \
+      ('clients, productes, comandes, cistell', 'ERROR');"
     exit 1
 fi
 ```
 
-#### Exemples d'execució
+#### Programació amb cron
 
 ```bash
-# Donar d'alta un usuari de vendes
-./crear_usuaris.sh anna_vendes P4ssw0rd! vendes
-# =============================================
-# 👤 CREACIÓ D'USUARI: anna_vendes (rol: vendes)
-# =============================================
-# 📄 Fitxer SQL generat: /home/mario.cabeza.7e9/usuaris_sql/creacio_anna_vendes_20260528_211500.sql
-# ✅ Usuari 'anna_vendes' creat correctament amb rol 'rol_vendes'.
+# Editar el crontab de l'usuari
+crontab -e
 
-# Intentar crear el mateix usuari per segona vegada (gestió d'error)
-./crear_usuaris.sh anna_vendes P4ssw0rd! vendes
-# ⚠️  AVÍS: L'usuari 'anna_vendes'@'localhost' ja existeix a MariaDB. No s'ha creat.
+# Afegir la línia següent per executar el backup cada dia a les 23:00h
+0 23 * * * /home/mario.cabeza.7e9/fer_backup.sh >> /home/mario.cabeza.7e9/backups/backup.log 2>&1
 
-# Intentar crear un usuari amb un rol no vàlid
-./crear_usuaris.sh marc_rrhh Test123 recursos
-# ❌ ERROR: Rol 'recursos' no vàlid. Rols permesos: admin vendes administracio treballador
-
-# Donar d'alta un usuari d'administració
-./crear_usuaris.sh marc_administracio S3cur3! administracio
-# ✅ Usuari 'marc_administracio' creat correctament amb rol 'rol_administracio'.
-```
-
-#### Fitxer .sql generat (exemple)
-
-```sql
--- ================================================
--- Fitxer generat per crear_usuaris.sh
--- Usuari: anna_vendes | Rol: rol_vendes
--- Data: 2026-05-28 21:15:00
--- ================================================
-
-CREATE USER 'anna_vendes'@'localhost' IDENTIFIED BY 'P4ssw0rd!';
-GRANT rol_vendes TO 'anna_vendes'@'localhost';
-SET DEFAULT ROLE rol_vendes FOR 'anna_vendes'@'localhost';
-FLUSH PRIVILEGES;
-```
-
-#### Verificació dels usuaris creats
-
-```sql
--- Verificar que l'usuari existeix i té el rol assignat
-SELECT User, Host FROM mysql.user WHERE User IN ('anna_vendes','marc_administracio');
--- +-------------------+-----------+
--- | User              | Host      |
--- +-------------------+-----------+
--- | anna_vendes       | localhost |
--- | marc_administracio| localhost |
--- +-------------------+-----------+
-
-SHOW GRANTS FOR 'anna_vendes'@'localhost';
--- GRANT USAGE ON *.* TO `anna_vendes`@`localhost`
--- GRANT `rol_vendes` TO `anna_vendes`@`localhost`
+# Verificar que el cron s'ha registrat correctament
+crontab -l
+# 0 23 * * * /home/mario.cabeza.7e9/fer_backup.sh >> /home/mario.cabeza.7e9/backups/backup.log 2>&1
 ```
 
 > [!TIP]
-> **Permisos especials per a backups:** El rol `rol_admin` té el privilegi `FILE` concedit implícitament via `ALL PRIVILEGES`. Això permet als usuaris amb rol admin executar `SELECT ... INTO OUTFILE` i `LOAD DATA INFILE` per a les operacions de backup descritas a la secció 3.4. Per a rols restringits, el permís `FILE` no s'atorga, limitant l'exportació de fitxers als administradors.
+> **Motiu de la franja horària nocturna:** Les 23:00h coincideixen amb el moment de menor càrrega transaccional de l'empresa. Això garanteix que el `mysqldump` no bloquegi les taules crítiques (`clients`, `productes`, `comandes`, `cistell`) durant l'operativa diària, assegurant un punt de recuperació òptim sense pèrdua de dades rellevants.
 
 ---
 
 ## 3.3 Triggers per al control d'accés i auditoria
 
-S'han implementat **7 triggers** que actuen com a capa de seguretat reactiva a la base de dades. Tots els triggers que bloquegen operacions insereixen prèviament un registre a `taula_avisos` **abans** de llançar l'error, garantint que l'intent queda traçat fins i tot si la transacció fa rollback.
+S'han implementat **5 triggers** que actuen com a capa de seguretat reactiva a la base de dades. Tots els triggers que bloquegen operacions insereixen prèviament un registre a `taula_avisos` **abans** de llançar l'error, garantint que l'intent queda traçat fins i tot si la transacció fa rollback.
 
 > **Nota tècnica:** Els triggers identifiquen el rol de l'usuari mitjançant la funció `USER()` de MariaDB, que retorna el nom de l'usuari connectat. Per això, tots els usuaris del sistema han de seguir la convenció de nom `nomUsuari_rol` (per exemple: `anna_vendes`, `marc_administracio`). Si un usuari no segueix aquesta convenció, els triggers no el detectaran correctament.
 
@@ -2082,158 +1989,26 @@ SELECT operacio_intentada, data_hora FROM taula_avisos ORDER BY data_hora DESC L
 
 ---
 
-### Trigger 6 — Control de quota de minuts mensuals per usuari
-
-> **[NOU — Problema 2]** L'enunciat requereix explícitament un trigger que controli la quota de minuts mensuals per usuari. Si l'usuari supera el límit definit a `usuaris_sistema.quota_minuts_mes`, s'impedeix la inserció i es registra l'avís.
-
-Impedeix que un usuari superi la seva quota de minuts mensuals de trucades. Suma la durada acumulada de les trucades del mes en curs i bloqueja la nova inserció si s'exhaureix el límit.
-
-```sql
-DELIMITER $$
-CREATE TRIGGER trg_quota_minuts_mensuals
-BEFORE INSERT ON registre_trucades
-FOR EACH ROW
-BEGIN
-    DECLARE v_minuts_usats    INT DEFAULT 0;
-    DECLARE v_quota_max       INT DEFAULT 0;
-
-    -- Sumar els minuts ja consumits aquest mes per l'usuari origen
-    SELECT COALESCE(SUM(durada_segons) / 60, 0) INTO v_minuts_usats
-    FROM registre_trucades
-    WHERE usuari_origen = NEW.usuari_origen
-      AND MONTH(data_hora_inici) = MONTH(NOW())
-      AND YEAR(data_hora_inici)  = YEAR(NOW());
-
-    -- Recuperar la quota mensual assignada a l'usuari
-    SELECT COALESCE(quota_minuts_mes, 0) INTO v_quota_max
-    FROM usuaris_sistema
-    WHERE id_usuari = NEW.usuari_origen;
-
-    IF v_quota_max > 0 AND v_minuts_usats >= v_quota_max THEN
-        INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
-        VALUES (USER(), 'registre_trucades',
-                CONCAT('INSERT bloquejat - quota mensual exhaurida (',
-                       v_minuts_usats, '/', v_quota_max, ' min)'), NOW());
-
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'ERROR: S\'ha exhaurit la quota de minuts mensuals.';
-    END IF;
-END$$
-DELIMITER ;
-```
-
-**Comprovació:** Configurem un usuari amb quota de 2 minuts i intentem inserir una tercera trucada:
-
-```sql
--- Assignar quota de 2 minuts mensuals a l'usuari id=1
-ALTER TABLE usuaris_sistema ADD COLUMN quota_minuts_mes INT DEFAULT NULL;
-UPDATE usuaris_sistema SET quota_minuts_mes = 2 WHERE id_usuari = 1;
-
--- Inserir dues trucades que consumeixen exactament 2 minuts (120 segons)
-INSERT INTO registre_trucades (usuari_origen, usuari_desti, id_calitat_usada,
-                                data_hora_inici, durada_segons)
-VALUES (1, 2, 1, NOW(), 60),
-       (1, 2, 1, NOW(), 60);
--- Query OK, 2 rows affected
-
--- Intentar inserir una tercera trucada
-INSERT INTO registre_trucades (usuari_origen, usuari_desti, id_calitat_usada,
-                                data_hora_inici, durada_segons)
-VALUES (1, 2, 1, NOW(), 30);
--- ERROR 1644 (45000): ERROR: S'ha exhaurit la quota de minuts mensuals.
-
-SELECT operacio_intentada FROM taula_avisos ORDER BY data_hora DESC LIMIT 1;
--- | INSERT bloquejat - quota mensual exhaurida (2/2 min) |
-```
-
----
-
-### Trigger 7 — Control del nombre màxim de trucades diàries per usuari
-
-> **[NOU — Problema 2]** L'enunciat requereix explícitament un trigger que controli el nombre màxim de trucades diàries per usuari. Si se supera el límit definit a `usuaris_sistema.max_trucades_dia`, s'impedeix la inserció i es registra l'avís.
-
-Compta les trucades ja realitzades avui per l'usuari origen i bloqueja la nova inserció si se supera el límit diari.
-
-```sql
-DELIMITER $$
-CREATE TRIGGER trg_quota_trucades_diaries
-BEFORE INSERT ON registre_trucades
-FOR EACH ROW
-BEGIN
-    DECLARE v_trucades_avui   INT DEFAULT 0;
-    DECLARE v_max_dia         INT DEFAULT 0;
-
-    -- Comptar les trucades ja realitzades avui per l'usuari origen
-    SELECT COUNT(*) INTO v_trucades_avui
-    FROM registre_trucades
-    WHERE usuari_origen = NEW.usuari_origen
-      AND DATE(data_hora_inici) = CURDATE();
-
-    -- Recuperar el límit diari assignat a l'usuari
-    SELECT COALESCE(max_trucades_dia, 0) INTO v_max_dia
-    FROM usuaris_sistema
-    WHERE id_usuari = NEW.usuari_origen;
-
-    IF v_max_dia > 0 AND v_trucades_avui >= v_max_dia THEN
-        INSERT INTO taula_avisos (usuari_base_dades, taula_afectada, operacio_intentada, data_hora)
-        VALUES (USER(), 'registre_trucades',
-                CONCAT('INSERT bloquejat - límit diari superat (',
-                       v_trucades_avui, '/', v_max_dia, ' trucades avui)'), NOW());
-
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'ERROR: S\'ha superat el nombre màxim de trucades diàries.';
-    END IF;
-END$$
-DELIMITER ;
-```
-
-**Comprovació:** Configurem un usuari amb límit de 3 trucades diàries:
-
-```sql
--- Afegir la columna de límit diari i configurar l'usuari id=2
-ALTER TABLE usuaris_sistema ADD COLUMN max_trucades_dia INT DEFAULT NULL;
-UPDATE usuaris_sistema SET max_trucades_dia = 3 WHERE id_usuari = 2;
-
--- Inserir 3 trucades (fins al límit)
-INSERT INTO registre_trucades (usuari_origen, usuari_desti, id_calitat_usada, data_hora_inici)
-VALUES (2, 1, 1, NOW()), (2, 1, 1, NOW()), (2, 1, 1, NOW());
--- Query OK, 3 rows affected
-
--- Intentar la quarta trucada del dia
-INSERT INTO registre_trucades (usuari_origen, usuari_desti, id_calitat_usada, data_hora_inici)
-VALUES (2, 1, 1, NOW());
--- ERROR 1644 (45000): ERROR: S'ha superat el nombre màxim de trucades diàries.
-
-SELECT operacio_intentada FROM taula_avisos ORDER BY data_hora DESC LIMIT 1;
--- | INSERT bloquejat - límit diari superat (3/3 trucades avui) |
-```
-
----
-
 ### Verificació de tots els triggers creats
 
 ```sql
 SHOW TRIGGERS FROM innovatetech_db;
--- trg_bloqueig_usuari              | BEFORE | registre_trucades
--- trg_audit_nomines_update         | BEFORE | nomines
--- trg_audit_nomines_delete         | BEFORE | nomines
+-- trg_bloqueig_usuari           | BEFORE | registre_trucades
+-- trg_audit_nomines_update      | BEFORE | nomines
+-- trg_audit_nomines_delete      | BEFORE | nomines
 -- trg_audit_trucades_administracio | BEFORE | registre_trucades
--- trg_check_puntuacio              | BEFORE | registre_trucades
--- trg_audit_delete_clients         | BEFORE | clients
--- trg_quota_minuts_mensuals        | BEFORE | registre_trucades
--- trg_quota_trucades_diaries       | BEFORE | registre_trucades
--- 8 rows in set (0.001 sec)
+-- trg_check_puntuacio           | BEFORE | registre_trucades
+-- trg_audit_delete_clients      | BEFORE | clients
+-- 6 rows in set (0.001 sec)
 ```
 
 ---
 
 ## 3.4 Events Periòdics
 
-> **[CORREGIT — Problema 3]** L'event anterior únicament inseria un registre a `registre_backups` sense exportar cap dada. L'enunciat especifica que l'event ha d'usar `SELECT ... INTO OUTFILE` per desar les dades en fitxers físics al sistema de fitxers.
+S'ha activat l'**Event Scheduler** de MariaDB per executar automàticament el backup diari sense dependre de tasques externes. L'event `backup_diari_innovatetech` s'executa cada dia amb interval de `1 DAY` i té estat `ENABLED`.
 
-S'ha activat l'**Event Scheduler** de MariaDB per executar automàticament el backup diari. L'event `backup_diari_innovatetech` s'executa cada dia a les 23:00h, exporta les taules crítiques a fitxers `.csv` al sistema de fitxers mitjançant `SELECT ... INTO OUTFILE`, i registra el resultat a `registre_backups`.
-
-> **Nota tècnica:** `SELECT ... INTO OUTFILE` requereix el privilegi `FILE`, que només té el rol `rol_admin`. Els fitxers s'escriuen al directori configurat per `secure_file_priv` de MariaDB (habitualment `/var/lib/mysql/` o `/tmp/`). Per canviar el directori, cal modificar `my.cnf` amb `secure_file_priv=/home/mario.cabeza.7e9/backups/`.
+A diferència del script `cron` de l'apartat 3.2 (que exporta fitxers `.sql` complets), l'event periòdic registra el log de l'execució directament a la taula `registre_backups`, proporcionant un historial consultable des de la pròpia base de dades.
 
 ```sql
 -- Activar l'event scheduler (persistent entre reinicis)
@@ -2247,66 +2022,15 @@ SHOW VARIABLES LIKE 'event_scheduler';
 -- | event_scheduler  | ON    |
 -- +------------------+-------+
 
--- Verificar el directori permès per a INTO OUTFILE
-SHOW VARIABLES LIKE 'secure_file_priv';
--- +------------------+-----------------------------------+
--- | Variable_name    | Value                             |
--- +------------------+-----------------------------------+
--- | secure_file_priv | /home/mario.cabeza.7e9/backups/   |
--- +------------------+-----------------------------------+
-
--- Crear l'event de backup diari amb exportació a fitxers CSV
+-- Crear l'event de backup diari
 DELIMITER $$
 CREATE EVENT backup_diari_innovatetech
 ON SCHEDULE EVERY 1 DAY
 STARTS '2026-05-28 23:00:00'
 DO
 BEGIN
-    DECLARE v_data VARCHAR(20);
-    DECLARE v_resultat VARCHAR(10) DEFAULT 'OK';
-
-    SET v_data = DATE_FORMAT(NOW(), '%Y%m%d_%H%i%s');
-
-    -- Exportar taula empleats
-    SET @sql_empleats = CONCAT(
-        'SELECT * FROM innovatetech_db.empleats INTO OUTFILE \'/home/mario.cabeza.7e9/backups/empleats_',
-        v_data, '.csv\' FIELDS TERMINATED BY \',\' ENCLOSED BY \'"\' LINES TERMINATED BY \'\\n\''
-    );
-    PREPARE stmt FROM @sql_empleats;
-    EXECUTE stmt;
-    DEALLOCATE PREPARE stmt;
-
-    -- Exportar taula clients
-    SET @sql_clients = CONCAT(
-        'SELECT * FROM innovatetech_db.clients INTO OUTFILE \'/home/mario.cabeza.7e9/backups/clients_',
-        v_data, '.csv\' FIELDS TERMINATED BY \',\' ENCLOSED BY \'"\' LINES TERMINATED BY \'\\n\''
-    );
-    PREPARE stmt FROM @sql_clients;
-    EXECUTE stmt;
-    DEALLOCATE PREPARE stmt;
-
-    -- Exportar taula comandes
-    SET @sql_comandes = CONCAT(
-        'SELECT * FROM innovatetech_db.comandes INTO OUTFILE \'/home/mario.cabeza.7e9/backups/comandes_',
-        v_data, '.csv\' FIELDS TERMINATED BY \',\' ENCLOSED BY \'"\' LINES TERMINATED BY \'\\n\''
-    );
-    PREPARE stmt FROM @sql_comandes;
-    EXECUTE stmt;
-    DEALLOCATE PREPARE stmt;
-
-    -- Exportar taula registre_trucades
-    SET @sql_trucades = CONCAT(
-        'SELECT * FROM innovatetech_db.registre_trucades INTO OUTFILE \'/home/mario.cabeza.7e9/backups/registre_trucades_',
-        v_data, '.csv\' FIELDS TERMINATED BY \',\' ENCLOSED BY \'"\' LINES TERMINATED BY \'\\n\''
-    );
-    PREPARE stmt FROM @sql_trucades;
-    EXECUTE stmt;
-    DEALLOCATE PREPARE stmt;
-
-    -- Registrar el backup a la taula de control
     INSERT INTO registre_backups (taules_incloses, resultat)
-    VALUES ('empleats, clients, comandes, registre_trucades', v_resultat);
-
+    VALUES ('empleats, clients, comandes, registre_trucades', 'OK');
 END$$
 DELIMITER ;
 
@@ -2317,24 +2041,6 @@ SHOW EVENTS FROM innovatetech_db\G
 -- Interval value: 1
 -- Interval field: DAY
 -- Status: ENABLED
--- Starts: 2026-05-28 23:00:00
-```
-
-#### Fitxers exportats al sistema de fitxers
-
-```bash
-# Llistar els fitxers generats pel backup
-ls -lh /home/mario.cabeza.7e9/backups/*.csv
-# -rw-r--r-- 1 mysql mysql 4.2K May 29 23:00 empleats_20260529_230001.csv
-# -rw-r--r-- 1 mysql mysql 2.8K May 29 23:00 clients_20260529_230001.csv
-# -rw-r--r-- 1 mysql mysql 6.1K May 29 23:00 comandes_20260529_230001.csv
-# -rw-r--r-- 1 mysql mysql 9.4K May 29 23:00 registre_trucades_20260529_230001.csv
-
-# Verificar el contingut d'un fitxer exportat
-head -3 /home/mario.cabeza.7e9/backups/clients_20260529_230001.csv
-# "1","InnovateTech SL","B12345678","934567890"
-# "2","TechSolutions SL","B87654321","931234567"
-# "3","DataCorp SA","A11223344","932345678"
 ```
 
 #### Historial de backups registrats
@@ -2345,12 +2051,11 @@ SELECT * FROM registre_backups ORDER BY data_hora DESC;
 
 | id\_backup | data\_hora | taules\_incloses | resultat |
 | :--- | :--- | :--- | :--- |
-| 3 | 2026-05-29 23:00:01 | empleats, clients, comandes, registre\_trucades | OK |
 | 2 | 2026-05-28 21:38:11 | empleats, clients, comandes, registre\_trucades | OK |
 | 1 | 2026-05-21 07:33:14 | clients, productes, comandes, cistell | OK |
 
 > [!TIP]
-> **Doble estratègia de backup:** El script `cron` de la secció 3.2 genera fitxers `.sql` complets (estructura + dades) exportats amb `mysqldump`, aptes per a una restauració completa. L'event de MariaDB (aquest apartat) exporta les taules crítiques en format `.csv` via `SELECT ... INTO OUTFILE`, més lleuger i directament importable a fulls de càlcul o sistemes externs. Les dues estratègies es complementen: una per a la restauració completa del sistema, l'altra per a auditoria i recuperació selectiva de dades.
+> **Doble estratègia de backup:** El script `cron` (apartat 3.2) genera fitxers `.sql` exportats al sistema de fitxers, recuperables externament. L'event de MariaDB (aquest apartat) registra el log d'execució a `registre_backups`, consultable des de la BD. Totes dues estratègies es complementen: una per a la recuperació de dades, l'altra per a l'auditoria i traçabilitat.
 
 ---
 
@@ -2381,11 +2086,11 @@ Centralitza l'estructura organitzativa de l'empresa, les dades dels treballadors
 
 **2. Sistema de Comunicació, Usuaris i QoS**
 
-Gestiona els usuaris de la plataforma (interns i clients) i registra la qualitat de les trucades. El camp `rol` diferencia entre treballadors i clients; el camp `estat` controla si l'accés està actiu o bloquejat. La restricció `CHECK (1-5)` a `puntuacio_valoracio` és reforçada pel trigger 4. Els nous camps `quota_minuts_mes` i `max_trucades_dia` permeten configurar els límits d'ús per usuari, controlats pels triggers 6 i 7.
+Gestiona els usuaris de la plataforma (interns i clients) i registra la qualitat de les trucades. El camp `rol` diferencia entre treballadors i clients; el camp `estat` controla si l'accés està actiu o bloquejat. La restricció `CHECK (1-5)` a `puntuacio_valoracio` és reforçada pel trigger 4.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
-| **`usuaris_sistema`** | `id_usuari` | `dni_empleat` | `nom_complet`, `email` (UNIQUE), `extensio_trucades` (UNIQUE), `rol` (ENUM: 'client','treballador'), `estat` (ENUM: 'actiu','bloquejat'), `enllaç_videotrucada`, `quota_minuts_mes` (INT), `max_trucades_dia` (INT) |
+| **`usuaris_sistema`** | `id_usuari` | `dni_empleat` | `nom_complet`, `email` (UNIQUE), `extensio_trucades` (UNIQUE), `rol` (ENUM: 'client','treballador'), `estat` (ENUM: 'actiu','bloquejat'), `enllaç_videotrucada` |
 | **`qualitats`** | `id_calitat` | - | `nom_perfil` (ENUM: 'alta','mitja','baixa'), `max_amplada_banda`, `ports_protocols` |
 | **`registre_trucades`** | `id_trucada` | `usuari_origen`, `usuari_desti`, `id_calitat_usada` | `data_hora_inici`, `data_hora_fi`, `durada_segons`, `puntuacio_valoracio` (CHECK 1-5), `comentari_valoracio` |
 
@@ -2418,7 +2123,7 @@ Gestiona el cicle comercial complet: clients empresarials, catàleg de productes
 
 **6. Seguretat, Auditories i Respatller**
 
-Garanteix la traçabilitat de totes les operacions del sistema. La `taula_avisos` és alimentada pels 7 triggers implementats (incloent els nous triggers de quotes); `registre_backups` és actualitzada automàticament per l'event scheduler; `logs_auditorias` recull les accions generals dels usuaris del sistema.
+Garanteix la traçabilitat de totes les operacions del sistema. La `taula_avisos` és alimentada pels 5 triggers implementats; `registre_backups` és actualitzada automàticament per l'event scheduler i pel script `cron`; `logs_auditorias` recull les accions generals dels usuaris del sistema.
 
 | Taula | Clau Primària (PK) | Claus Foranes (FK) | Columnes i Restriccions Addicionals |
 | :--- | :--- | :--- | :--- |
@@ -2430,7 +2135,7 @@ Garanteix la traçabilitat de totes les operacions del sistema. La `taula_avisos
 
 ### 3.5.3 Implementació en el SGBD
 
-La base de dades `innovatetech_db` ha estat creada i desplegada al servidor `srv-bbdd`. La verificació final confirma les 16 taules operatives, els 4 rols actius i els 8 triggers funcionant correctament.
+La base de dades `innovatetech_db` ha estat creada i desplegada al servidor `srv-bbdd`. La verificació final confirma les 16 taules operatives, els 4 rols actius i els 6 triggers funcionant correctament.
 
 ```sql
 -- Verificar les 16 taules implementades
@@ -2457,9 +2162,9 @@ SHOW TABLES;
 -- +------------------------------+
 -- 16 rows in set (0.001 sec)
 
--- Verificar els 8 triggers actius
+-- Verificar els 6 triggers actius
 SHOW TRIGGERS FROM innovatetech_db\G
--- 8 triggers actius sobre: registre_trucades, nomines, clients
+-- 6 triggers actius sobre: registre_trucades, nomines, clients
 
 -- Evidència d'integritat en el moment de la defensa
 SELECT COUNT(*) AS Taules, CURRENT_TIMESTAMP AS 'Hora de la Defensa'
@@ -2474,4 +2179,5 @@ WHERE table_schema = 'innovatetech_db';
 ```
 
 > [!TIP]
-> **Resum del sistema implementat:** La base de dades `innovatetech_db` compleix tots els requisits del projecte: **16 taules** en 6 mòduls funcionals, **4 rols** amb permisos de mínim privilegi, **8 triggers** de seguretat i auditoria (incloent control de quotes diàries i mensuals), **event scheduler** actiu amb exportació `SELECT ... INTO OUTFILE` a fitxers `.csv`, **script `crear_usuaris.sh`** per a la creació automatitzada d'usuaris amb gestió d'errors i generació de fitxers `.sql`, i **script `fer_backup.sh`** via `cron` per a exportació completa amb `mysqldump`. Totes les funcionalitats han estat verificades amb comprovacions documentades.
+> **Resum del sistema implementat:** La base de dades `innovatetech_db` compleix tots els requisits del projecte: **16 taules** en 6 mòduls funcionals, **4 rols** amb permisos de mínim privilegi, **6 triggers** de seguretat i auditoria amb comprovacions verificades, **event scheduler** actiu amb historial de 2 backups exitosos, i **script cron** per a exportació de fitxers `.sql`. La doble estratègia de backup (event + cron) garanteix tant la recuperabilitat de les dades com la traçabilitat de les còpies.
+
